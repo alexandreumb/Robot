@@ -1,0 +1,63 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:macro name="Robot4Farmers" params="use_sim:=false">
+    <ros2_control name="robot2_hardware" type="system">
+      <hardware>
+        <xacro:if value="${use_sim}">
+          <!-- Gazebo simulation hardware interface -->
+          <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+        </xacro:if>
+        <xacro:unless value="${use_sim}">
+          <!-- Real robot hardware interface -->
+          <plugin>example/Robot4FarmersHardware</plugin>
+        </xacro:unless>
+      </hardware>
+
+      <joint name="left_front_wheel_joint">
+        <state_interface name="position"/>
+        <command_interface name="position"/>
+      </joint>
+      <joint name="right_front_wheel_joint">
+        <state_interface name="position"/>
+        <command_interface name="position"/>
+      </joint>
+      <joint name="left_rear_wheel_joint">
+        <state_interface name="velocity"/>
+        <state_interface name="position"/>
+        <command_interface name="velocity"/>
+      </joint>
+      <joint name="right_rear_wheel_joint">
+        <state_interface name="velocity"/>
+        <state_interface name="position"/>
+        <command_interface name="velocity"/>
+      </joint>
+    </ros2_control>
+
+    <!-- GPS — simulation uses Gazebo plugin, not ros2_control sensor -->
+    <xacro:unless value="${use_sim}">
+      <ros2_control name="gps_hardware" type="sensor">
+        <hardware>
+          <plugin>example/GpsHardware</plugin>
+          <!-- 
+          <param name="interface_type">serial</param>
+          <param name="serial_device">/dev/ttyUSB0</param>
+          or 
+          
+          <param name="interface_type">ethernet</param>
+          <param name="port">4001</param>
+          -->
+        </hardware>
+        <sensor name="gps_sensor">
+          <state_interface name="latitude"/>
+          <state_interface name="longitude"/>
+          <state_interface name="altitude"/>
+          <!--
+          <state_interface name="velocity_x"/>
+          <state_interface name="velocity_y"/>
+          <state_interface name="heading"/>
+          -->
+        </sensor>
+      </ros2_control>
+    </xacro:unless>
+  </xacro:macro>
+</robot>

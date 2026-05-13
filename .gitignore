@@ -1,0 +1,22 @@
+# ROS 2 build artifacts
+build/
+install/
+log/
+
+# also catch nested ones inside src
+src/**/build/
+src/**/install/
+src/**/log/
+
+# IDE
+.vscode/
+
+# OS
+*.swp
+.DS_Store
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile

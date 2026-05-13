@@ -1,0 +1,33 @@
+[ 20%] Built target camera2_sub
+[ 40%] Built target camera1_sub
+[ 60%] Built target robot2
+[ 80%] Built target camera2_pub
+[100%] Built target camera1_pub
+-- Install configuration: ""
+-- Execute custom install script
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/robot2//robot2.xml
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/lib/robot2//camera1_pub
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/lib/robot2//camera1_sub
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/lib/robot2//camera2_pub
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/lib/robot2//camera2_sub
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/robot2/urdf/gazebo.urdf.xacro
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/robot2/urdf/my_robot.urdf.xacro
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/robot2/yaml/system.yaml
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/robot2/launch/__pycache__/launch.cpython-310.pyc
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/robot2/launch/robot2_launch.py
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/ament_index/resource_index/package_run_dependencies/robot2
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/ament_index/resource_index/parent_prefix_path/robot2
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/robot2/environment/ament_prefix_path.sh
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/robot2/environment/ament_prefix_path.dsv
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/robot2/environment/path.sh
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/robot2/environment/path.dsv
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/robot2/local_setup.bash
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/robot2/local_setup.sh
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/robot2/local_setup.zsh
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/robot2/local_setup.dsv
+-- Symlinking: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/robot2/package.dsv
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/ament_index/resource_index/packages/robot2
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/ament_index/resource_index/hardware_interface__pluginlib__plugin/robot2
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/robot2/cmake/robot2Config.cmake
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/robot2/cmake/robot2Config-version.cmake
+-- Up-to-date symlink: /home/alexandre/iceoryx_demo_ws/src/robot2/install/robot2/share/robot2/package.xml

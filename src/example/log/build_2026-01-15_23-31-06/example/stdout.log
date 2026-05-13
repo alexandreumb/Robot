@@ -1,0 +1,66 @@
+[ 18%] Built target camera1_sub
+[ 36%] Built target camera2_pub
+[ 54%] Built target camera2_sub
+[ 72%] Built target camera1_pub
+[100%] Built target example
+[100%] Built target ament_cmake_python_copy_robot_control
+running egg_info
+writing robot_control.egg-info/PKG-INFO
+writing dependency_links to robot_control.egg-info/dependency_links.txt
+writing top-level names to robot_control.egg-info/top_level.txt
+reading manifest file 'robot_control.egg-info/SOURCES.txt'
+writing manifest file 'robot_control.egg-info/SOURCES.txt'
+[100%] Built target ament_cmake_python_build_robot_control_egg
+-- Install configuration: ""
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/environment/pythonpath.sh
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/environment/pythonpath.dsv
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/local/lib/python3.10/dist-packages/robot_control-0.0.0-py3.10.egg-info
+-- Installing: /home/alexandre/iceoryx_demo_ws/src/example/install/example/local/lib/python3.10/dist-packages/robot_control-0.0.0-py3.10.egg-info/dependency_links.txt
+-- Installing: /home/alexandre/iceoryx_demo_ws/src/example/install/example/local/lib/python3.10/dist-packages/robot_control-0.0.0-py3.10.egg-info/PKG-INFO
+-- Installing: /home/alexandre/iceoryx_demo_ws/src/example/install/example/local/lib/python3.10/dist-packages/robot_control-0.0.0-py3.10.egg-info/SOURCES.txt
+-- Installing: /home/alexandre/iceoryx_demo_ws/src/example/install/example/local/lib/python3.10/dist-packages/robot_control-0.0.0-py3.10.egg-info/top_level.txt
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/local/lib/python3.10/dist-packages/robot_control
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/local/lib/python3.10/dist-packages/robot_control/__init__.py
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/local/lib/python3.10/dist-packages/robot_control/twist_to_ackermann.py
+Listing '/home/alexandre/iceoryx_demo_ws/src/example/install/example/local/lib/python3.10/dist-packages/robot_control'...
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/lib/example/twist_to_ackermann.py
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/example.xml
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/lib/example/camera1_pub
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/lib/example/camera1_sub
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/lib/example/camera2_pub
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/lib/example/camera2_sub
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/rviz/rviz
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/rviz/rviz/robot.rviz
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/rviz/rviz/rviz.rviz
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/include/example
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/include/example/example
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/include/example/example/robot.hpp
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/include/example/example/gps.hpp
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/urdf
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/urdf/my_robot.urdf.xacro
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/ros2_control_description
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/ros2_control_description/robot2_description.xacro
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/ros2_control_description/robot2.ros2_control.xacro
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/launch
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/launch/__pycache__
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/launch/__pycache__/launch.cpython-310.pyc
+-- Installing: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/launch/robot2_launch.py
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/config
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/config/system.yaml
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/lib/libexample.so
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/ament_index/resource_index/package_run_dependencies/example
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/ament_index/resource_index/parent_prefix_path/example
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/environment/ament_prefix_path.sh
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/environment/ament_prefix_path.dsv
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/environment/path.sh
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/environment/path.dsv
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/local_setup.bash
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/local_setup.sh
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/local_setup.zsh
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/local_setup.dsv
+-- Installing: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/package.dsv
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/ament_index/resource_index/packages/example
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/ament_index/resource_index/hardware_interface__pluginlib__plugin/example
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/cmake/exampleConfig.cmake
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/cmake/exampleConfig-version.cmake
+-- Up-to-date: /home/alexandre/iceoryx_demo_ws/src/example/install/example/share/example/package.xml

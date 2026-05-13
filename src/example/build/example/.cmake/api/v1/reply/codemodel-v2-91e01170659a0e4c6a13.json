@@ -1,0 +1,133 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-500ffd2257f1a24d1205.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.12"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						5,
+						6,
+						7,
+						8
+					]
+				}
+			],
+			"name" : "",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "example",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						5,
+						6,
+						7,
+						8
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "ament_cmake_python_build_robot_control_egg::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ament_cmake_python_build_robot_control_egg-41687069dbd0edc78dcb.json",
+					"name" : "ament_cmake_python_build_robot_control_egg",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "ament_cmake_python_copy_robot_control::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ament_cmake_python_copy_robot_control-c138f50865edb26484f4.json",
+					"name" : "ament_cmake_python_copy_robot_control",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "camera1_pub::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-camera1_pub-69b929cc9f4a0dd4fece.json",
+					"name" : "camera1_pub",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "camera1_sub::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-camera1_sub-ca48bd6c3c7f87f246b4.json",
+					"name" : "camera1_sub",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "camera2_pub::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-camera2_pub-901aa673dfda528ec39b.json",
+					"name" : "camera2_pub",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "camera2_sub::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-camera2_sub-f9012988ba3018a1fdf8.json",
+					"name" : "camera2_sub",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "example::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-example-2bdaab4806c8a97b52af.json",
+					"name" : "example",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "example_uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-example_uninstall-c29b031232e7d26dc93d.json",
+					"name" : "example_uninstall",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-uninstall-c29009cfdd2a97f8bac7.json",
+					"name" : "uninstall",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/home/alexandre/iceoryx_demo_ws/src/example/build/example",
+		"source" : "/home/alexandre/iceoryx_demo_ws/src/example"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 3
+	}
+}

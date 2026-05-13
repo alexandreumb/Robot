@@ -1,0 +1,115 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-dfaff9ab4121ad25a1df.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.12"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						5,
+						6
+					]
+				}
+			],
+			"name" : "",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "robot2",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						5,
+						6
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "camera1_pub::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-camera1_pub-5fd987b21117dee14109.json",
+					"name" : "camera1_pub",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "camera1_sub::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-camera1_sub-4aa2611ff4f5870ac6e9.json",
+					"name" : "camera1_sub",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "camera2_pub::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-camera2_pub-72ba58e2de7368e14757.json",
+					"name" : "camera2_pub",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "camera2_sub::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-camera2_sub-0acb18745b7cf92c1c18.json",
+					"name" : "camera2_sub",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "robot2::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-robot2-15035434777b5b5e5d40.json",
+					"name" : "robot2",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "robot2_uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-robot2_uninstall-bb693f0415e66737bbbe.json",
+					"name" : "robot2_uninstall",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-uninstall-b6d8381eaeab9c7aed59.json",
+					"name" : "uninstall",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/home/alexandre/iceoryx_demo_ws/src/robot2/build/robot2",
+		"source" : "/home/alexandre/iceoryx_demo_ws/src/robot2"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 3
+	}
+}

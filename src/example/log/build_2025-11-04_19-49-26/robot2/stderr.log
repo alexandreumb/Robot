@@ -1,0 +1,7 @@
+/usr/bin/ld: /home/alexandre/iceoryx_demo_ws/src/install/serial/lib/libserial.a(unix.cc.o): warning: relocation against `_ZN6serial15SerialExceptionD1Ev' in read-only section `.text'
+/usr/bin/ld: /home/alexandre/iceoryx_demo_ws/src/install/serial/lib/libserial.a(serial.cc.o): relocation R_X86_64_PC32 against symbol `_ZTVN6serial6SerialE' can not be used when making a shared object; recompile with -fPIC
+/usr/bin/ld: final link failed: bad value
+collect2: error: ld returned 1 exit status
+gmake[2]: *** [CMakeFiles/robot2.dir/build.make:238: librobot2.so] Error 1
+gmake[1]: *** [CMakeFiles/Makefile2:249: CMakeFiles/robot2.dir/all] Error 2
+gmake: *** [Makefile:146: all] Error 2

@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>robot2</name>
+  <version>0.0.0</version>
+  <description>TODO: Package description</description>
+  <maintainer email="alexandre@todo.todo">alexandre</maintainer>
+  <license>TODO: License declaration</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>fixed_size_msgs</depend>
+  <depend>OpenCV</depend>
+  <depend>iceoryx_posh</depend>    
+  <depend>realsense2</depend>  
+  <depend>serial</depend>
+  <depend>hardware_interface</depend>
+  <depend>controller_manager</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+    <hardware_interface plugin="${prefix}/robot2.xml"/>
+  </export>
+</package>
