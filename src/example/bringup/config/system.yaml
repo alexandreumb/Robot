@@ -47,8 +47,8 @@ robot_steering_controller:
     rear_wheels_radius: 0.1
     front_steering: true
     reference_timeout: 2.0
-    rear_wheels_names: ["left_rear_wheel_joint", "right_rear_wheel_joint"]
-    front_wheels_names: ["left_front_wheel_joint", "right_front_wheel_joint"]  # rolling joints
+    axes_names: ["rear_wheels_joint", "front_wheels_joint"]
+    direction_names: ["direction_joint"]
     front_wheel_track: 0.6
     rear_wheel_track: 0.6
     gps_sensor_name: ["gps_sensor"]

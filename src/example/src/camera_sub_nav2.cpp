@@ -85,7 +85,7 @@ int main(int argc, char ** argv)
         write_queue.pop();
         lock.unlock();
         // write outside lock — doesn't block receive loop
-        cv::imwrite("image" + std::to_string(idx) + ".png", frame);
+        cv::imwrite("images/depth_image" + std::to_string(idx) + ".png", frame);
     }
     });
     
@@ -124,7 +124,6 @@ int main(int argc, char ** argv)
             continue;
         }
 
-
         ++frame_count;
 
         cv::Mat img(
@@ -135,12 +134,13 @@ int main(int argc, char ** argv)
         );
         
         //process_image(img);
-        cv::Mat depth_display;
-        cv::normalize(img, depth_display, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+        cv::Mat depth_8bit, depth_color;
+        cv::normalize(img, depth_8bit, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+        cv::applyColorMap(depth_8bit, depth_color, cv::COLORMAP_JET);
 
         std::lock_guard<std::mutex> lock(queue_mutex);
         if (write_queue.size() < MAX_QUEUE_SIZE) {
-            write_queue.push({img.clone(), frame_count});
+            write_queue.push({depth_color.clone(), frame_count});
             queue_cv.notify_one();
         }
 

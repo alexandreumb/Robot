@@ -133,7 +133,7 @@ int main(int argc, char ** argv)
         write_queue.pop();
         lock.unlock();
         // write outside lock — doesn't block receive loop
-        cv::imwrite("image" + std::to_string(idx) + ".png", frame);
+        cv::imwrite("images/color_image" + std::to_string(idx) + ".png", frame);
     }
     });
     
@@ -227,12 +227,14 @@ int main(int argc, char ** argv)
             const_cast<uint8_t *>(msg->data.data())
         );
 
+        cv::Mat safe_copy = img.clone();  // copia antes do msg ser reutilizado
+
         // ── Step 5: process ───────────────────────────────────────────────
         //process_image(img);
 
         std::lock_guard<std::mutex> lock(queue_mutex);
         if (write_queue.size() < MAX_QUEUE_SIZE) {
-            write_queue.push({img.clone(), frame_count});
+            write_queue.push({safe_copy, frame_count});
             queue_cv.notify_one();
         }
 

@@ -14,7 +14,7 @@ using Image8Mb = fixed_size_msgs::msg::Image8Mb;
 // When USE_CLOCK_MONOTONIC = 1 in the subscriber, set it to 1 here too.
 // Both sides must use the same clock or diffs will be meaningless.
 #define USE_CLOCK_MONOTONIC   1
-#define REALSENSE 0
+#define REALSENSE 1
 
 // ── globals for signal handling ──────────────────────────────────────────────
 std::atomic<bool> stop{false};

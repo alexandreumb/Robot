@@ -7,14 +7,53 @@
 #include <serial/serial.h>
 #include <unordered_map>
 #include <string>
+#include <thread>
 
 namespace example
 {
     struct JointValue
     {
-        double position{0.0};
-        double velocity{0.0};
-        double effort{0.0};
+        double temperature_front_left;
+        double temperature_front_right;
+        double temperature_front_timestamp;
+        double temperature_rear_left;
+        double temperature_rear_right;
+        double temperature_rear_timestamp;
+        double velocity_front_left;
+        double velocity_front_right;
+        double velocity_front_timestamp;
+        double velocity_rear_left;
+        double velocity_rear_right;
+        double velocity_rear_timestamp;
+        double throttle_front_left;
+        double throttle_front_right;
+        double throttle_front_timestamp;
+        double throttle_rear_left;
+        double throttle_rear_right;
+        double throttle_rear_timestamp;
+        double reverse_front_left;
+        double reverse_front_right;
+        double reverse_front_timestamp;
+        double reverse_rear_left;
+        double reverse_rear_right;
+        double reverse_rear_timestamp;
+        double brake_front_left;
+        double brake_front_right;
+        double brake_front_timestamp;
+        double brake_rear_left;
+        double brake_rear_right;
+        double brake_rear_timestamp;
+        double steering_angle;
+        double steering_angle_timestamp;
+        double steering_torque_high;
+        double steering_torque_low;
+        double steering_torque_timestamp;
+        double battery_voltage;
+        double battery_voltage_timestamp;
+        double controller_status;
+        double controller_status_timestamp;
+        double velocity;
+        double direction;
     };
 
     struct Joint
@@ -86,15 +125,29 @@ namespace example
         void set_command(const std::string &name, double value);
 
     private:
+        void open_can();
+        void can_loop();
+
         rclcpp::Clock clock_;
         serial::Serial serial_;
-
+        
         // Maps for joint states and commands
         // OLD:
         // std::unordered_map<std::string, Joint> map_;
 
         // NEW:
         std::vector<Joint> joints_;
+
+        int can_socket_fd_;
+        bool can_running_;
+        std::string can_interface_{"can0"};
+        int bytes_received{0};
+
+
+        std::thread can_thread_;
+        std::mutex can_mutex_;
+
+        JointValue latest_can_data_; // protegido por can_mutex_
     };
 
 } // namespace example

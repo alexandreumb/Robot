@@ -8,6 +8,7 @@ endif()
 
 # Find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(gnss_compass_utils REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(hardware_interface REQUIRED)
@@ -118,7 +119,7 @@ target_include_directories(example PUBLIC
   $<INSTALL_INTERFACE:include/example>
 )
 ament_target_dependencies(example
-  rclcpp rclcpp_lifecycle hardware_interface controller_manager pluginlib serial
+  rclcpp rclcpp_lifecycle hardware_interface controller_manager pluginlib serial gnss_compass_utils
 )
 pluginlib_export_plugin_description_file(hardware_interface example.xml)
 

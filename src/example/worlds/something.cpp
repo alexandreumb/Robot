@@ -101,23 +101,6 @@ void GpsHardware::open_socket()
     bind(socket_fd_, (struct sockaddr*)&addr, sizeof(addr));
 }
 
-void GpsHardware::open_serial(const std::string &device)
-{
-    serial_fd_ = open(device.c_str(), O_RDWR | O_NOCTTY | O_SYNC);
-
-    struct termios tty{};
-    tcgetattr(serial_fd_, &tty);
-
-    cfsetospeed(&tty, B115200);
-    cfsetispeed(&tty, B115200);
-
-    tty.c_cflag |= (CLOCAL | CREAD);
-    tty.c_cflag &= ~CSIZE;
-    tty.c_cflag |= CS8;
-
-    tcsetattr(serial_fd_, TCSANOW, &tty);
-}
-
 void GpsHardware::ethernet_loop()
 {
     uint8_t buffer[1024];
@@ -149,35 +132,6 @@ void GpsHardware::ethernet_loop()
     }
 }
 
-void GpsHardware::serial_loop()
-{
-    uint8_t buffer[512];
-
-    while (running_) {
-        int n = ::read(serial_fd_, buffer, sizeof(buffer));
-
-        if (n <= 0) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            continue;
-        }
-
-        // --- Try ANPP ---
-        ANPPPacket pkt;
-        if (parse_anpp(buffer, n, pkt)) {
-            if (pkt.id == 20) {
-                GPSData data = decode_packet_20(pkt);
-                std::lock_guard<std::mutex> lock(gps_mutex_);
-                latest_data_ = data;
-                continue;
-            }
-            else 
-                continue;
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-    }
-}
-
 //////////////////////////////////////////////////////////////
 // ROS2 LIFECYCLE
 //////////////////////////////////////////////////////////////
@@ -200,13 +154,8 @@ hardware_interface::CallbackReturn GpsHardware::on_activate(
 {
     running_ = true;
 
-    if (interface_type_ == "serial") {
-        open_serial("/dev/ttyUSB0");
-        reader_thread_ = std::thread(&GpsHardware::serial_loop, this);
-    } else {
-        open_socket();
-        reader_thread_ = std::thread(&GpsHardware::ethernet_loop, this);
-    }
+    open_socket();
+    reader_thread_ = std::thread(&GpsHardware::ethernet_loop, this);
 
     return CallbackReturn::SUCCESS;
 }
@@ -219,7 +168,6 @@ hardware_interface::CallbackReturn GpsHardware::on_deactivate(
     if (reader_thread_.joinable())
         reader_thread_.join();
 
-    if (serial_fd_ > 0) close(serial_fd_);
     if (socket_fd_ > 0) close(socket_fd_);
 
     return CallbackReturn::SUCCESS;
@@ -301,6 +249,7 @@ PLUGINLIB_EXPORT_CLASS(example::GpsHardware, hardware_interface::SensorInterface
 
 
 
+
 #pragma once
 
 #include <hardware_interface/sensor_interface.hpp>
@@ -342,11 +291,7 @@ namespace example
 
         void open_socket();
 
-        void open_serial(const std::string &device);
-
         void ethernet_loop();
-
-        void serial_loop();
 
         // Lifecycle hooks
         hardware_interface::CallbackReturn on_init(
@@ -391,7 +336,6 @@ namespace example
 
     private:
         rclcpp::Clock clock_;
-        serial::Serial serial_;
 
         // Maps for joint states and commands
         // OLD:
@@ -406,22 +350,15 @@ namespace example
         std::thread reader_thread_;
 
         // config
-        std::string interface_type_ = "serial"; // or "ethernet"
-
-        // serial
-        int serial_fd_ = -1;
+        std::string interface_type_ =  "ethernet";
 
         // ethernet
         int socket_fd_ = -1;
         std::string ip_ = "192.168.1.10";
-        int port_ = 9000;
+        int port_ = 50010;
     };
 
 } // namespace example
-
-
-
-
 
 
 

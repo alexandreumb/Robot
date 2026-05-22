@@ -13,23 +13,49 @@
         </xacro:unless>
       </hardware>
 
-      <joint name="left_front_wheel_joint">
-        <state_interface name="position"/>
-        <command_interface name="position"/>
-      </joint>
-      <joint name="right_front_wheel_joint">
-        <state_interface name="position"/>
-        <command_interface name="position"/>
-      </joint>
-      <joint name="left_rear_wheel_joint">
-        <state_interface name="velocity"/>
-        <state_interface name="position"/>
+      <joint name="front_wheels_joint">
+        <state_interface name="temperature_front_left"/>
+        <state_interface name="temperature_front_right"/>
+        <state_interface name="temperature_front_timestampt"/>
+        <state_interface name="velocity_front_left"/>
+        <state_interface name="velocity_front_right"/>
+        <state_interface name="velocity_front_timestamp"/>
+        <state_interface name="throttle_front_left"/>
+        <state_interface name="throttle_front_right"/>
+        <state_interface name="throttle_front_timestamp"/>
+        <state_interface name="reverse_front_left"/>
+        <state_interface name="reverse_front_right"/>
+        <state_interface name="reverse_front_timestamp"/>
+        <state_interface name="brake_front_left"/>
+        <state_interface name="brake_front_right"/>
+        <state_interface name="brake_front_timestamp"/>
         <command_interface name="velocity"/>
       </joint>
-      <joint name="right_rear_wheel_joint">
-        <state_interface name="velocity"/>
-        <state_interface name="position"/>
+      <joint name="rear_wheels_joint">
+        <state_interface name="temperature_rear_left"/>
+        <state_interface name="temperature_rear_right"/>
+        <state_interface name="temperature_rear_timestamp"/>
+        <state_interface name="velocity_rear_left"/>
+        <state_interface name="velocity_rear_right"/>
+        <state_interface name="velocity_rear_timestamp"/>
+        <state_interface name="throttle_rear_left"/>
+        <state_interface name="throttle_rear_right"/>
+        <state_interface name="throttle_rear_timestamp"/>
+        <state_interface name="reverse_rear_left"/>
+        <state_interface name="reverse_rear_right"/>
+        <state_interface name="reverse_rear_timestamp"/>
+        <state_interface name="brake_rear_left"/>
+        <state_interface name="brake_rear_right"/>
+        <state_interface name="brake_rear_timestamp"/>
         <command_interface name="velocity"/>
+      </joint>
+      <joint name="direction_joint">
+        <state_interface name="steering_angle"/>
+        <state_interface name="steering_angle_timestamp"/>
+        <state_interface name="steering_torque_high"/>
+        <state_interface name="steering_torque_low"/>
+        <state_interface name="steering_torque_timestamp"/>
+        <command_interface name="direction"/>
       </joint>
     </ros2_control>
 
@@ -38,24 +64,27 @@
       <ros2_control name="gps_hardware" type="sensor">
         <hardware>
           <plugin>example/GpsHardware</plugin>
-          <!-- 
-          <param name="interface_type">serial</param>
-          <param name="serial_device">/dev/ttyUSB0</param>
-          or 
-          
-          <param name="interface_type">ethernet</param>
-          <param name="port">4001</param>
-          -->
+          <param name="ip">192.168.1.150</param>
+          <param name="port">16718</param>
         </hardware>
+
         <sensor name="gps_sensor">
+          <state_interface name="gnss_fix"/>
           <state_interface name="latitude"/>
           <state_interface name="longitude"/>
-          <state_interface name="altitude"/>
-          <!--
-          <state_interface name="velocity_x"/>
-          <state_interface name="velocity_y"/>
+          <state_interface name="height"/>
+          <state_interface name="velocity_north"/>
+          <state_interface name="velocity_east"/>
+          <state_interface name="velocity_down"/>
+          <state_interface name="roll"/>
+          <state_interface name="pitch"/>
           <state_interface name="heading"/>
-          -->
+          <state_interface name="angular_velocity_x"/>
+          <state_interface name="angular_velocity_y"/>
+          <state_interface name="angular_velocity_z"/>
+          <state_interface name="accelerometer_x"/>
+          <state_interface name="accelerometer_y"/>
+          <state_interface name="accelerometer_z"/>
         </sensor>
       </ros2_control>
     </xacro:unless>

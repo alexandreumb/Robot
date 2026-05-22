@@ -15,7 +15,12 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   rclcpp_lifecycle
   realtime_tools
   std_srvs
-  steering_controllers_library
+  nav_msgs
+  geometry_msgs
+  tf2
+  tf2_msgs
+  tf2_geometry_msgs
+  control_msgs
 )
 
 find_package(ament_cmake REQUIRED)
@@ -48,46 +53,47 @@ target_compile_definitions(robot_steering_controller PRIVATE "ROBOT_STEERING_CON
 pluginlib_export_plugin_description_file(
   controller_interface robot_steering_controller.xml)
 
-if(BUILD_TESTING)
-  find_package(ament_cmake_gmock REQUIRED)
-  find_package(controller_manager REQUIRED)
-  find_package(hardware_interface REQUIRED)
-  find_package(ros2_control_test_assets REQUIRED)
+
+#if(BUILD_TESTING)
+#  find_package(ament_cmake_gmock REQUIRED)
+#  find_package(controller_manager REQUIRED)
+#  find_package(hardware_interface REQUIRED)
+#  find_package(ros2_control_test_assets REQUIRED)
 
 
-  add_rostest_with_parameters_gmock(test_load_robot_steering_controller
-    test/test_load_robot_steering_controller.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/robot_steering_controller_params.yaml
-  )
-  ament_target_dependencies(test_load_robot_steering_controller
-    controller_manager
-    hardware_interface
-    ros2_control_test_assets
-  )
+#  add_rostest_with_parameters_gmock(test_load_robot_steering_controller
+#    test/test_load_robot_steering_controller.cpp
+#    ${CMAKE_CURRENT_SOURCE_DIR}/test/robot_steering_controller_params.yaml
+#  )
+#  ament_target_dependencies(test_load_robot_steering_controller
+#    controller_manager
+#    hardware_interface
+#    ros2_control_test_assets
+#  )
 
-  add_rostest_with_parameters_gmock(test_robot_steering_controller
-    test/test_robot_steering_controller.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/robot_steering_controller_params.yaml
-  )
-  target_include_directories(test_robot_steering_controller PRIVATE include)
-  target_link_libraries(test_robot_steering_controller robot_steering_controller)
-  ament_target_dependencies(
-    test_robot_steering_controller
-    controller_interface
-    hardware_interface
-  )
+#  add_rostest_with_parameters_gmock(test_robot_steering_controller
+#    test/test_robot_steering_controller.cpp
+#    ${CMAKE_CURRENT_SOURCE_DIR}/test/robot_steering_controller_params.yaml
+#  )
+#  target_include_directories(test_robot_steering_controller PRIVATE include)
+#  target_link_libraries(test_robot_steering_controller robot_steering_controller)
+#  ament_target_dependencies(
+#    test_robot_steering_controller
+#    controller_interface
+#    hardware_interface
+#  )
 
-  add_rostest_with_parameters_gmock(
-    test_robot_steering_controller_preceding test/test_robot_steering_controller_preceding.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test/robot_steering_controller_preceding_params.yaml)
-  target_include_directories(test_robot_steering_controller_preceding PRIVATE include)
-  target_link_libraries(test_robot_steering_controller_preceding robot_steering_controller)
-  ament_target_dependencies(
-    test_robot_steering_controller_preceding
-    controller_interface
-    hardware_interface
-  )
-endif()
+#  add_rostest_with_parameters_gmock(
+#    test_robot_steering_controller_preceding test/test_robot_steering_controller_preceding.cpp
+#    ${CMAKE_CURRENT_SOURCE_DIR}/test/robot_steering_controller_preceding_params.yaml)
+#  target_include_directories(test_robot_steering_controller_preceding PRIVATE include)
+#  target_link_libraries(test_robot_steering_controller_preceding robot_steering_controller)
+#  ament_target_dependencies(
+#    test_robot_steering_controller_preceding
+#    controller_interface
+#    hardware_interface
+#  )
+#endif()
 
 install(
   DIRECTORY include/

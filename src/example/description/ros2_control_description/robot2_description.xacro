@@ -32,9 +32,8 @@
             <origin xyz="0.0 0.0 0.2" rpy="0.0 0.0 0.0"/>
         </joint>
 
-        <!-- Rear Wheels -->
-        <!-- left real wheel -->
-        <link name="left_rear_wheel">
+        <!-- Rear Axel -->
+        <link name="rear_wheels">
             <visual>
                 <origin xyz="0.0 0.0 0.0" rpy="1.5708 0.0 1.5708"/>
                 <geometry>
@@ -58,50 +57,18 @@
             </inertial>
         </link>
 
-        <joint name="left_rear_wheel_joint" type="continuous">
+        <joint name="rear_wheels_joint" type="continuous">
             <parent link="chassis_link"/>
-            <child link="left_rear_wheel"/>
-            <origin xyz="-0.5 0.3 -0.1" rpy="0.0 0.0 1.5708"/>
+            <child link="rear_wheels"/>
+            <origin xyz="-0.5 0.0 -0.1" rpy="0.0 0.0 1.5708"/>
             <axis xyz="1 0 0"/>
             <limit effort="10.0" velocity="5.0"/>
         </joint>
 
-        <!-- right rear wheel -->
-        <link name="right_rear_wheel">
-            <visual>
-                <origin xyz="0.0 0.0 0.0" rpy="1.5708 0.0 1.5708"/>
-                <geometry>
-                    <cylinder radius="0.1" length="0.05"/>
-                </geometry>
-                <material name="black">
-                    <color rgba="0.1 0.1 0.1 1.0"/>
-                </material>
-            </visual>
-            <collision>
-                <origin xyz="0.0 0.0 0.0" rpy="1.5708 0.0 1.5708"/>
-                <geometry>
-                    <cylinder radius="0.1" length="0.05"/>
-                </geometry>
-            </collision>
-            <inertial>
-                <origin xyz="0.0 0.0 0.0" rpy="1.5708 0.0 1.5708"/>
-                <mass value="1.0"/>
-                <inertia ixx="0.01" ixy="0.0" ixz="0.0"
-                         iyy="0.01" iyz="0.0" izz="0.01"/>
-            </inertial>
-        </link>
-        <joint name="right_rear_wheel_joint" type="continuous">
-            <parent link="chassis_link"/>
-            <child link="right_rear_wheel"/>
-            <origin xyz="-0.5 -0.3 -0.1" rpy="0.0 0.0 1.5708"/>
-            <axis xyz="1 0 0"/>
-            <limit effort="10.0" velocity="5.0"/>
-
-        </joint>
         
-        <!-- Front Wheels -->
-        <!-- left front wheel -->
-        <link name="left_front_wheel">
+        <!-- Front Axel -->
+        <!-- front wheels -->
+        <link name="front_wheels">
             <visual>
                 <origin xyz="0.0 0.0 0.0" rpy="1.5708 0.0 1.5708"/>
                 <geometry>
@@ -124,16 +91,17 @@
                          iyy="0.01" iyz="0.0" izz="0.01"/>
             </inertial>
         </link>
-        <joint name="left_front_wheel_joint" type="revolute">
+        <joint name="front_wheels_joint" type="revolute">
             <parent link="chassis_link"/>
-            <child link="left_front_wheel"/>
-            <origin xyz="0.5 0.3 -0.1" rpy="0.0 0.0 1.5708"/>
+            <child link="front_wheels"/>
+            <origin xyz="0.5 0.0 -0.1" rpy="0.0 0.0 1.5708"/>
             <axis xyz="0 0 1"/>
             <limit lower="-1.57" upper="1.57" effort="10.0" velocity="5.0"/>
         </joint>
 
-        <!-- right front wheel -->
-        <link name="right_front_wheel">
+
+
+        <link name="direction_link">
             <visual>
                 <origin xyz="0.0 0.0 0.0" rpy="1.5708 0.0 1.5708"/>
                 <geometry>
@@ -156,13 +124,14 @@
                          iyy="0.01" iyz="0.0" izz="0.01"/>
             </inertial>
         </link>
-        <joint name="right_front_wheel_joint" type="revolute">
+        <joint name="direction_joint" type="revolute">
             <parent link="chassis_link"/>
-            <child link="right_front_wheel"/>
-            <origin xyz="0.5 -0.3 -0.1" rpy="0.0 0.0 1.5708"/>
+            <child link="direction_link"/>
+            <origin xyz="0.0 0.0 0.0" rpy="0.0 0.0 0.0"/>
             <axis xyz="0 0 1"/>
             <limit lower="-1.57" upper="1.57" effort="10.0" velocity="5.0"/>
         </joint>
+
 
         <!-- GPS Sensor -->
         <link name="gps_link">
