@@ -40,9 +40,6 @@ namespace rclcpp_lifecycle
 namespace joint_state_broadcaster
 {
   const auto kUninitializedValue = std::numeric_limits<double>::quiet_NaN();
-  using hardware_interface::HW_IF_EFFORT;
-  using hardware_interface::HW_IF_POSITION;
-  using hardware_interface::HW_IF_VELOCITY;
 
   JointStateBroadcaster::JointStateBroadcaster() {}
 
@@ -83,9 +80,23 @@ namespace joint_state_broadcaster
       state_interfaces_config.type = controller_interface::interface_configuration_type::INDIVIDUAL;
       for (const auto &joint : params_.joints)
       {
-        for (const auto &interface : params_.interfaces)
+        if (params_.interfaces.empty())
         {
-          state_interfaces_config.names.push_back(joint + "/" + interface);
+          if(joint.find("front") != std::string::npos)
+          {
+            state_interfaces_config.names.push_back(joint + "/velocity_front_left");
+          }
+          else if(joint.find("rear") != std::string::npos)
+          {
+            state_interfaces_config.names.push_back(joint + "/velocity_rear_left");
+          }
+        }
+        else
+        {
+          for (const auto &interface : params_.interfaces)
+          {
+            state_interfaces_config.names.push_back(joint + "/" + interface);
+          }
         }
       }
     }
@@ -118,31 +129,6 @@ namespace joint_state_broadcaster
           get_node()->get_logger(),
           "Publishing state interfaces defined in 'joints' and 'interfaces' parameters.");
     }
-
-    auto get_map_interface_parameter =
-        [&](std::string const &interface, std::string const &interface_to_map)
-    {
-      if (
-          std::find(params_.interfaces.begin(), params_.interfaces.end(), interface) !=
-          params_.interfaces.end())
-      {
-        map_interface_to_joint_state_[interface] = interface;
-        RCLCPP_WARN(
-            get_node()->get_logger(),
-            "Mapping from '%s' to interface '%s' will not be done, because '%s' is defined "
-            "in 'interface' parameter.",
-            interface_to_map.c_str(), interface.c_str(), interface.c_str());
-      }
-      else
-      {
-        map_interface_to_joint_state_[interface_to_map] = interface;
-      }
-    };
-
-    map_interface_to_joint_state_ = {};
-    get_map_interface_parameter(HW_IF_POSITION, params_.map_interface_to_joint_state.position);
-    get_map_interface_parameter(HW_IF_VELOCITY, params_.map_interface_to_joint_state.velocity);
-    get_map_interface_parameter(HW_IF_EFFORT, params_.map_interface_to_joint_state.effort);
 
     try
     {
@@ -250,6 +236,11 @@ namespace joint_state_broadcaster
       {
         interface_name = map_interface_to_joint_state_[interface_name];
       }
+
+      if (interface_name == "velocity_front_left" || interface_name == "velocity_rear_left")
+      {
+        interface_name = "velocity";
+      }
       name_if_value_mapping_[si->get_prefix_name()][interface_name] = kUninitializedValue;
     }
 
@@ -258,7 +249,7 @@ namespace joint_state_broadcaster
     for (const auto &name_ifv : name_if_value_mapping_)
     {
       const auto &interfaces_and_values = name_ifv.second;
-      if (has_any_key(interfaces_and_values, {HW_IF_POSITION, HW_IF_VELOCITY, HW_IF_EFFORT}))
+      if (has_any_key(interfaces_and_values, {"velocity"}))
       {
         joint_names_.push_back(name_ifv.first);
       }
@@ -275,7 +266,7 @@ namespace joint_state_broadcaster
         if (name_if_value_mapping_.count(extra_joint_name) == 0)
         {
           name_if_value_mapping_[extra_joint_name] = {
-              {HW_IF_POSITION, 0.0}, {HW_IF_VELOCITY, 0.0}, {HW_IF_EFFORT, 0.0}};
+              {"position", 0.0}, {"velocity", 0.0}, {"effort", 0.0}};
           joint_names_.push_back(extra_joint_name);
         }
       }
@@ -288,13 +279,14 @@ namespace joint_state_broadcaster
   {
     const size_t num_joints = joint_names_.size();
 
-    /// @note joint_state_msg publishes position, velocity and effort for all joints,
-    /// with at least one of these interfaces, the rest are omitted from this message
+    auto &joint_state_msg =
+        realtime_joint_state_publisher_->msg_;
 
-    // default initialization for joint state message
-    auto &joint_state_msg = realtime_joint_state_publisher_->msg_;
     joint_state_msg.header.frame_id = params_.frame_id;
+
     joint_state_msg.name = joint_names_;
+
+    // Standard ROS JointState fields
     joint_state_msg.position.resize(num_joints, kUninitializedValue);
     joint_state_msg.velocity.resize(num_joints, kUninitializedValue);
     joint_state_msg.effort.resize(num_joints, kUninitializedValue);
@@ -307,7 +299,7 @@ namespace joint_state_broadcaster
     dynamic_joint_state_msg.joint_names.clear();
     dynamic_joint_state_msg.interface_values.clear();
     for (const auto &name_ifv : name_if_value_mapping_)
-    {
+    { 
       const auto &name = name_ifv.first;
       const auto &interfaces_and_values = name_ifv.second;
       dynamic_joint_state_msg.joint_names.push_back(name);
@@ -353,6 +345,10 @@ namespace joint_state_broadcaster
       {
         interface_name = map_interface_to_joint_state_[interface_name];
       }
+      if (interface_name == "velocity_front_left" || interface_name == "velocity_rear_left")
+      {
+        interface_name = "velocity";
+      }
       name_if_value_mapping_[state_interface.get_prefix_name()][interface_name] =
           state_interface.get_value();
       RCLCPP_DEBUG(
@@ -369,12 +365,10 @@ namespace joint_state_broadcaster
       // update joint state message and dynamic joint state message
       for (size_t i = 0; i < joint_names_.size(); ++i)
       {
-        joint_state_msg.position[i] =
-            get_value(name_if_value_mapping_, joint_names_[i], HW_IF_POSITION);
-        joint_state_msg.velocity[i] =
-            get_value(name_if_value_mapping_, joint_names_[i], HW_IF_VELOCITY);
-        joint_state_msg.effort[i] = get_value(name_if_value_mapping_, joint_names_[i], HW_IF_EFFORT);
-      }
+        joint_state_msg.position[i] = kUninitializedValue; // position is not supported in this controller
+        joint_state_msg.velocity[i] = get_value(name_if_value_mapping_, joint_names_[i], "velocity");
+        joint_state_msg.effort[i] = kUninitializedValue; // effort is not supported in this controller
+      }  
       realtime_joint_state_publisher_->unlockAndPublish();
     }
 
@@ -382,19 +376,18 @@ namespace joint_state_broadcaster
     {
       auto &dynamic_joint_state_msg = realtime_dynamic_joint_state_publisher_->msg_;
       dynamic_joint_state_msg.header.stamp = time;
+
       for (size_t joint_index = 0; joint_index < dynamic_joint_state_msg.joint_names.size();
            ++joint_index)
       {
         const auto &name = dynamic_joint_state_msg.joint_names[joint_index];
+
         for (size_t interface_index = 0;
-             interface_index <
-             dynamic_joint_state_msg.interface_values[joint_index].interface_names.size();
+             interface_index < dynamic_joint_state_msg.interface_values[joint_index].interface_names.size();
              ++interface_index)
         {
-          const auto &interface_name =
-              dynamic_joint_state_msg.interface_values[joint_index].interface_names[interface_index];
-          dynamic_joint_state_msg.interface_values[joint_index].values[interface_index] =
-              name_if_value_mapping_[name][interface_name];
+          const auto &interface_name = dynamic_joint_state_msg.interface_values[joint_index].interface_names[interface_index];
+          dynamic_joint_state_msg.interface_values[joint_index].values[interface_index] = name_if_value_mapping_[name][interface_name];
         }
       }
       realtime_dynamic_joint_state_publisher_->unlockAndPublish();

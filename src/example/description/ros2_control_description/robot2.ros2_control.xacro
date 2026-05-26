@@ -16,7 +16,7 @@
       <joint name="front_wheels_joint">
         <state_interface name="temperature_front_left"/>
         <state_interface name="temperature_front_right"/>
-        <state_interface name="temperature_front_timestampt"/>
+        <state_interface name="temperature_front_timestamp"/>
         <state_interface name="velocity_front_left"/>
         <state_interface name="velocity_front_right"/>
         <state_interface name="velocity_front_timestamp"/>

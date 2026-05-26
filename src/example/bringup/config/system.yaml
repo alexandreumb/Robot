@@ -18,6 +18,11 @@ controller_manager:
       type: "robot_steering_controller/RobotSteeringController"
         
 
+joint_state_broadcaster:
+  ros__parameters:
+    use_sim_time: false  # Set to true if using Gazebo/simulation
+    joints: ["rear_wheels_joint", "front_wheels_joint"]
+
 ackermann_steering_controller:
   ros__parameters:
     use_sim_time: false  # Set to true if using Gazebo/simulation

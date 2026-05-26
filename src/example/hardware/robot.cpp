@@ -13,6 +13,8 @@
 namespace example
 {
 
+#define SEND_CAN_COMMANDS 0
+
 void Robot4FarmersHardware::open_can()
 {
     struct sockaddr_can addr;
@@ -49,6 +51,7 @@ void Robot4FarmersHardware::can_loop()
     struct can_frame frame;
     while (can_running_) {
         bytes_received = ::read(can_socket_fd_, &frame, sizeof(struct can_frame));
+        
         if (bytes_received < 0) {
             RCLCPP_ERROR(get_logger(), "Error reading from CAN socket");
             break;
@@ -92,7 +95,7 @@ void Robot4FarmersHardware::can_loop()
                         break;
 
                     default:
-                        // unknown CAN ID → ignore safely
+                        // unknown CAN ID
                         break;
                 }
             }
@@ -192,7 +195,7 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_activate(
 
             joint.command.velocity = 0;
         }
-        else if (joint.joint_name.find("steering") != std::string::npos)
+        else if (joint.joint_name.find("direction") != std::string::npos)
         {
             joint.state.steering_angle = 0;
             joint.state.steering_angle_timestamp = 0;
@@ -269,7 +272,7 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_deactivate(
 
             joint.command.velocity = 0;
         }
-        else if (joint.joint_name.find("steering") != std::string::npos)
+        else if (joint.joint_name.find("direction") != std::string::npos)
         {
             joint.state.steering_angle = 0;
             joint.state.steering_angle_timestamp = 0;
@@ -316,7 +319,7 @@ hardware_interface::return_type Robot4FarmersHardware::read(
                 joint.state.throttle_front_right = latest_can_data_.throttle_front_right;
                 joint.state.throttle_front_timestamp = latest_can_data_.throttle_front_timestamp;
             }
-            else if (joint.joint_name.find("steering") != std::string::npos)
+            else if (joint.joint_name.find("direction") != std::string::npos)
             {
                 joint.state.steering_angle = latest_can_data_.steering_angle;
                 joint.state.steering_angle_timestamp = latest_can_data_.steering_angle_timestamp;
@@ -332,20 +335,83 @@ hardware_interface::return_type Robot4FarmersHardware::read(
 hardware_interface::return_type Robot4FarmersHardware::write(
     const rclcpp::Time &, const rclcpp::Duration &)
 {
+    if (can_socket_fd_ < 0)
+    {
+        RCLCPP_ERROR(get_logger(), "CAN socket not connected");
+        return hardware_interface::return_type::ERROR;
+    }
     // In a real implementation, you would write commands to the CAN bus here.
     // For this example, we just log the commands that would be sent.
     for (const auto &joint : joints_)    {
+
+#if SEND_CAN_COMMANDS
+        stuct can_frame frame{};
+        frame.dlc = 8; // Data length code (number of bytes in data)
+#endif
         if (joint.joint_name.find("rear") != std::string::npos)
         {
+#if SEND_CAN_COMMANDS
+            frame.can_id = 0x200; // Example CAN ID for rear throttle
+            int16_t velocity_command = static_cast<int16_t>(joint.command.velocity);
+
+            frame.data[0] = (velocity_command >> 8) & 0xFF; // High byte
+            frame.data[1] = velocity_command & 0xFF;        // Low byte
+
+            ssize_t bytes_written = ::write(can_socket_fd_, &frame, sizeof(struct can_frame));
+
+            if (bytes_written != sizeof(frame))
+            {
+                RCLCPP_ERROR(
+                    get_logger(),
+                    "Failed to send rear velocity CAN frame");
+            }
+            else
+            {
+                RCLCPP_INFO(
+                    get_logger(),
+                    "Rear velocity command sent: %d",
+                    velocity);
+            }
+#else
             RCLCPP_INFO(get_logger(), "Writing command for %s: velocity=%.2f", joint.joint_name.c_str(), joint.command.velocity);
+#endif
         }
         else if (joint.joint_name.find("front") != std::string::npos)
         {
+#if SEND_CAN_COMMANDS
+            frame.can_id = 0x100; // Example CAN ID for front throttle
+            int16_t velocity_command = static_cast<int16_t>(joint.command.velocity);
+
+            frame.data[0] = (velocity_command >> 8) & 0xFF; // High byte
+            frame.data[1] = velocity_command & 0xFF;        // Low byte
+
+            ssize_t bytes_written = ::write(can_socket_fd_, &frame, sizeof(struct can_frame));
+
+            if (bytes_written != sizeof(frame))
+            {
+                RCLCPP_ERROR(
+                    get_logger(),
+                    "Failed to send front velocity CAN frame");
+            }
+            else
+            {
+                RCLCPP_INFO(
+                    get_logger(),
+                    "Front velocity command sent: %d",
+                    velocity);
+            }
+#else
             RCLCPP_INFO(get_logger(), "Writing command for %s: velocity=%.2f", joint.joint_name.c_str(), joint.command.velocity);
+#endif
         }
-        else if (joint.joint_name.find("steering") != std::string::npos)
+        else if (joint.joint_name.find("direction") != std::string::npos)
         {
+#if SEND_CAN_COMMANDS
+            //::write(can_socket_fd_, &joint.command.direction, sizeof(joint.command.direction));
             RCLCPP_INFO(get_logger(), "Writing command for %s: direction=%.2f", joint.joint_name.c_str(), joint.command.direction);
+#else
+            RCLCPP_INFO(get_logger(), "Writing command for %s: direction=%.2f", joint.joint_name.c_str(), joint.command.direction);
+#endif
         }
     }
     return hardware_interface::return_type::OK;
@@ -406,7 +472,7 @@ double Robot4FarmersHardware::get_command(const std::string &name)
             {
                 return joint.command.velocity; // Assuming front joints use velocity_front_left for command
             }
-            else if (name.find("steering") != std::string::npos)
+            else if (name.find("direction") != std::string::npos)
             {
                 return joint.command.direction;
             }
@@ -430,7 +496,7 @@ void Robot4FarmersHardware::set_command(const std::string &name, double value)
             {
                 joint.command.velocity = value;
             }
-            else if (name.find("steering") != std::string::npos)
+            else if (name.find("direction") != std::string::npos)
             {
                 joint.command.direction = value;
             }
@@ -612,7 +678,7 @@ std::vector<hardware_interface::StateInterface> Robot4FarmersHardware::export_st
                 "reverse_front_timestamp", 
                 &joint.state.reverse_front_timestamp));
         }
-        else if (joint.joint_name.find("steering") != std::string::npos)
+        else if (joint.joint_name.find("direction") != std::string::npos)
         {
             state_interfaces.emplace_back(
             hardware_interface::StateInterface(
@@ -670,7 +736,7 @@ std::vector<hardware_interface::CommandInterface> Robot4FarmersHardware::export_
                 hardware_interface::HW_IF_VELOCITY, 
                 &joint.command.velocity));
         }
-        else if (joint.joint_name.find("steering") != std::string::npos)
+        else if (joint.joint_name.find("direction") != std::string::npos)
         {
             command_interfaces.emplace_back(
             hardware_interface::CommandInterface(
