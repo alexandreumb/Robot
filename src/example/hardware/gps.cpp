@@ -22,6 +22,8 @@
 namespace example
 {
 
+#define GPS_ACTIVE 1
+
 //////////////////////////////////////////////////////////////
 // SOCKET
 //////////////////////////////////////////////////////////////
@@ -63,13 +65,16 @@ void GpsHardware::open_socket()
 void GpsHardware::ethernet_loop()
 {
     GPSData buffer{};
+    
+    RCLCPP_INFO(get_logger(), "Ethernet loop");
 
     while (running_) {
 
         // ── 1. Receber dados para o buffer do decoder ──────────
-        bytes_received = receive(an_decoder_pointer(&an_decoder_), an_decoder_size(&an_decoder_));
+        bytes_received = ::read(socket_fd_, an_decoder_pointer(&an_decoder_), an_decoder_size(&an_decoder_));
                 
         if (bytes_received <= 0) {
+            RCLCPP_INFO(get_logger(), "No bytes received");
             // socket fechado ou erro — aguarda e tenta continuar
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
@@ -188,10 +193,11 @@ hardware_interface::CallbackReturn GpsHardware::on_init(
 hardware_interface::CallbackReturn GpsHardware::on_configure(
     const rclcpp_lifecycle::State &)
 {
+#if GPS_ACTIVE
     an_decoder_initialise(&an_decoder_);
     gnss_fix_type_prev_ = -1;
     latest_data_        = GPSData{};
-
+#endif
     RCLCPP_INFO(get_logger(), "GpsHardware configured (ip=%s port=%d)", ip_.c_str(), port_);
     return CallbackReturn::SUCCESS;
 }
@@ -199,6 +205,7 @@ hardware_interface::CallbackReturn GpsHardware::on_configure(
 hardware_interface::CallbackReturn GpsHardware::on_activate(
     const rclcpp_lifecycle::State &)
 {
+#if GPS_ACTIVE
     open_socket();
     if (socket_fd_ < 0) {
         RCLCPP_ERROR(get_logger(), "Cannot activate: socket not connected");
@@ -208,6 +215,7 @@ hardware_interface::CallbackReturn GpsHardware::on_activate(
     running_ = true;
     reader_thread_ = std::thread(&GpsHardware::ethernet_loop, this);
 
+#endif
     RCLCPP_INFO(get_logger(), "GpsHardware activated");
     return CallbackReturn::SUCCESS;
 }
@@ -215,6 +223,7 @@ hardware_interface::CallbackReturn GpsHardware::on_activate(
 hardware_interface::CallbackReturn GpsHardware::on_deactivate(
     const rclcpp_lifecycle::State &)
 {
+#if GPS_ACTIVE
     running_ = false;
 
     if (reader_thread_.joinable())
@@ -224,7 +233,7 @@ hardware_interface::CallbackReturn GpsHardware::on_deactivate(
         close(socket_fd_);
         socket_fd_ = -1;
     }
-
+#endif
     RCLCPP_INFO(get_logger(), "GpsHardware deactivated");
     return CallbackReturn::SUCCESS;
 }
@@ -269,14 +278,25 @@ hardware_interface::return_type GpsHardware::read(
     const rclcpp::Time &, const rclcpp::Duration &)
 {
     GPSData copy;
+
+#if GPS_ACTIVE
     {
         std::lock_guard<std::mutex> lock(gps_mutex_);
         copy = latest_data_;
     }
+#endif
 
     for (auto &joint : joints_) {
         joint.state = copy;
+        if (i % 100 == 0)
+        {
+            RCLCPP_INFO(get_logger(), "Writing command for %s: gnss_fix=%.2f", joint.joint_name.c_str(), joint.state.gnss_fix);
+            RCLCPP_INFO(get_logger(), "Writing command for %s: acc=%.2f", joint.joint_name.c_str(), joint.state.accelerometer_y);
+            RCLCPP_INFO(get_logger(), "Writing command for %s: rollx=%.2f", joint.joint_name.c_str(), joint.state.roll);
+        }
     }
+
+    i++;
 
     return hardware_interface::return_type::OK;
 }

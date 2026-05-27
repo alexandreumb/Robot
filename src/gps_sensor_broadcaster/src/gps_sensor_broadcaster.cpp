@@ -54,7 +54,7 @@ namespace gps_sensor_broadcaster
     {
       cfg.names.push_back(sensor + "/latitude");
       cfg.names.push_back(sensor + "/longitude");
-      cfg.names.push_back(sensor + "/altitude");
+      cfg.names.push_back(sensor + "/height");
     }
 
     return cfg;
@@ -104,7 +104,7 @@ namespace gps_sensor_broadcaster
   {
     double latitude = 0.0;
     double longitude = 0.0;
-    double altitude = 0.0;
+    double height = 0.0;
 
     for (const auto &si : state_interfaces_)
     {
@@ -116,9 +116,9 @@ namespace gps_sensor_broadcaster
       {
         longitude = si.get_value();
       }
-      else if (si.get_interface_name() == "altitude")
+      else if (si.get_interface_name() == "height")
       {
-        altitude = si.get_value();
+        height = si.get_value();
       }
     }
 
@@ -130,7 +130,7 @@ namespace gps_sensor_broadcaster
 
       msg.latitude = latitude;
       msg.longitude = longitude;
-      msg.altitude = altitude;
+      msg.altitude = height;
 
       // Optional but recommended
       msg.status.status = sensor_msgs::msg::NavSatStatus::STATUS_FIX;

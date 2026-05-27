@@ -97,7 +97,9 @@ controller_interface::CallbackReturn RobotSteeringController::on_configure(
 
   odometry_.set_odometry_type(steering_odometry::ROBOT_CONFIG);
 
-  set_interface_numbers(NR_STATE_ITFS, NR_CMD_ITFS, NR_REF_ITFS);
+  nr_state_itfs_ = NR_STATE_ITFS;
+  nr_cmd_itfs_ = NR_CMD_ITFS;
+  nr_ref_itfs_ = NR_REF_ITFS;
 
   if (!robot_params_.axes_names.empty() && robot_params_.axes_names.size() == 2)
   {
@@ -375,29 +377,29 @@ RobotSteeringController::state_interface_configuration() const
   for (size_t i = 0; i < direction_names_.size(); i++)
   {
     state_interfaces_config.names.push_back(
-      front_wheels_state_names_[i] + "/steering_angle");
+      direction_names_[i] + "/steering_angle");
     state_interfaces_config.names.push_back(
-      front_wheels_state_names_[i] + "/steering_angle_timestamp");
+      direction_names_[i] + "/steering_angle_timestamp");
     state_interfaces_config.names.push_back(
-      front_wheels_state_names_[i] + "/steering_torque_high");
+      direction_names_[i] + "/steering_torque_high");
     state_interfaces_config.names.push_back(
-      front_wheels_state_names_[i] + "/steering_torque_low");
+      direction_names_[i] + "/steering_torque_low");
     state_interfaces_config.names.push_back(
-      front_wheels_state_names_[i] + "/steering_torque_timestamp");
+      direction_names_[i] + "/steering_torque_timestamp");
   }
 
   for (size_t i = 0; i < gps_sensor_names_.size(); i++)
   {
     state_interfaces_config.names.push_back(
-      gps_sensor_names_[i] + "/altitude");
+      gps_sensor_names_[i] + "/height");
     state_interfaces_config.names.push_back(
       gps_sensor_names_[i] + "/latitude");
     state_interfaces_config.names.push_back(
       gps_sensor_names_[i] + "/longitude");
     state_interfaces_config.names.push_back(
-      gps_sensor_names_[i] + "/velocity_x");
+      gps_sensor_names_[i] + "/velocity_north");
     state_interfaces_config.names.push_back(
-      gps_sensor_names_[i] + "/velocity_y");
+      gps_sensor_names_[i] + "/velocity_east");
     state_interfaces_config.names.push_back(
       gps_sensor_names_[i] + "/heading");
   }
@@ -417,15 +419,11 @@ RobotSteeringController::command_interface_configuration() const
   {
     if (axes_names_[i].find("front") != std::string::npos) {
       command_interfaces_config.names.push_back(
-        axes_names_[i] + "/velocity_front_left");
-      command_interfaces_config.names.push_back(
-        axes_names_[i] + "/velocity_front_right");
+        axes_names_[i] + "/" + hardware_interface::HW_IF_VELOCITY);
     }
     else if (axes_names_[i].find("rear") != std::string::npos) {
       command_interfaces_config.names.push_back(
-        axes_names_[i] + "/velocity_rear_left");
-      command_interfaces_config.names.push_back(
-        axes_names_[i] + "/velocity_rear_right");
+        axes_names_[i] + "/" + hardware_interface::HW_IF_VELOCITY);
     }
     else {
       RCLCPP_ERROR(get_node()->get_logger(), "Axis name %s does not include 'front' or 'rear'", axes_names_[i].c_str());
@@ -436,7 +434,7 @@ RobotSteeringController::command_interface_configuration() const
   for (size_t i = 0; i < direction_names_.size(); i++)
   {
     command_interfaces_config.names.push_back(
-      direction_names_[i] + "/steering_angle");
+      direction_names_[i] + "/direction");
   }
   
   return command_interfaces_config;

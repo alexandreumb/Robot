@@ -12,6 +12,7 @@
 #include <sstream>
 #include <time.h>
 #include <vector>
+#include <thread>
 
 using Image8Mb = fixed_size_msgs::msg::Image8Mb;
 
@@ -129,7 +130,13 @@ int main(int argc, char ** argv)
     {
         rclcpp::MessageInfo msg_info;
         if (!sub->take(*msg, msg_info)) {
-            __asm__ volatile("pause" ::: "memory");
+            #if defined(__x86_64__) || defined(__i386__)
+                __asm__ volatile("pause" ::: "memory");
+            #elif defined(__aarch64__) || defined(__arm__)
+                __asm__ volatile("yield" ::: "memory");
+            #else
+                std::this_thread::yield();
+            #endif
             continue;
         }
 

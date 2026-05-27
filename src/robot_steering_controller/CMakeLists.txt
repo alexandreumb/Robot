@@ -37,6 +37,7 @@ add_library(
   robot_steering_controller
   SHARED
   src/robot_steering_controller.cpp
+  src/steering_odometry.cpp
 )
 target_compile_features(robot_steering_controller PUBLIC cxx_std_17)
 target_include_directories(robot_steering_controller PUBLIC

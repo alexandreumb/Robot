@@ -12,7 +12,7 @@ robot_steering_controller:
       default_value: [],
       read_only: true,
       validation: {
-        size_lt<>: [2],
+        size_lt<>: [3],
         unique<>: null,
       }
     }
@@ -24,7 +24,7 @@ robot_steering_controller:
       default_value: [],
       read_only: true,
       validation: {
-        size_lt<>: [1],
+        size_lt<>: [2],
         unique<>: null,
       }
     }

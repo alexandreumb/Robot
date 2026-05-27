@@ -133,6 +133,8 @@ namespace example
         int gnss_fix_type_prev_{-1}; // para detetar mudança de tipo de fix
         int bytes_received{0};
 
+        int i{0};
+
         // ── Thread / dados ─────────────────────────────────────
         std::atomic<bool> running_{false};
         std::thread reader_thread_;

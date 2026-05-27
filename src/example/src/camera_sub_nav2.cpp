@@ -11,6 +11,7 @@
 #include <sstream>
 #include <time.h>
 #include <vector>
+#include <thread>
 
 #define USE_CLOCK_MONOTONIC 1
 #define PRINT               0
@@ -120,7 +121,13 @@ int main(int argc, char ** argv)
     {
         rclcpp::MessageInfo msg_info;
         if (!sub->take(*msg, msg_info)) {
-            __asm__ volatile("pause" ::: "memory");
+            #if defined(__x86_64__) || defined(__i386__)
+                __asm__ volatile("pause" ::: "memory");
+            #elif defined(__aarch64__) || defined(__arm__)
+                __asm__ volatile("yield" ::: "memory");
+            #else
+                std::this_thread::yield();
+            #endif
             continue;
         }
 
@@ -129,14 +136,31 @@ int main(int argc, char ** argv)
         cv::Mat img(
             static_cast<int>(msg->height),
             static_cast<int>(msg->width),
-            IMG_TYPE,
-            const_cast<uint8_t *>(msg->data.data())
+            CV_16UC1,
+            const_cast<uint8_t*>(msg->data.data())
         );
         
-        //process_image(img);
         cv::Mat depth_8bit, depth_color;
-        cv::normalize(img, depth_8bit, 0, 255, cv::NORM_MINMAX, CV_8UC1);
-        cv::applyColorMap(depth_8bit, depth_color, cv::COLORMAP_JET);
+        constexpr uint16_t MAX_VALID_DEPTH = 7500;
+        static cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT, {3,3});
+
+        cv::threshold(img, img, MAX_VALID_DEPTH, 0, cv::THRESH_TOZERO_INV);
+
+        cv::medianBlur(img, img, 3);
+
+        depth_8bit.create(img.size(), CV_8UC1);
+
+        img.convertTo(depth_8bit, CV_8U, 255.0 / MAX_VALID_DEPTH);
+
+
+        cv::morphologyEx(
+            depth_8bit,
+            depth_8bit,
+            cv::MORPH_OPEN,
+            kernel
+        );
+
+        cv::applyColorMap(depth_8bit, depth_color, cv::COLORMAP_TURBO);
 
         std::lock_guard<std::mutex> lock(queue_mutex);
         if (write_queue.size() < MAX_QUEUE_SIZE) {

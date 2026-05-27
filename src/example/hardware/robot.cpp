@@ -14,6 +14,7 @@ namespace example
 {
 
 #define SEND_CAN_COMMANDS 0
+#define CAN_AVAILABLE 0
 
 void Robot4FarmersHardware::open_can()
 {
@@ -64,34 +65,28 @@ void Robot4FarmersHardware::can_loop()
                 std::lock_guard<std::mutex> lock(can_mutex_);
                 switch (frame.can_id)
                 {
-                    case 0x100: // Front Throttle
+                    case 0b001000000000: // Front Throttle
                         latest_can_data_.throttle_front_left = (frame.data[4] << 8) | frame.data[5];
                         latest_can_data_.throttle_front_right = (frame.data[6] << 8) | frame.data[7];
                         latest_can_data_.throttle_front_timestamp = (frame.data[0] << 24) | (frame.data[1] << 16) | (frame.data[2] << 8)  | frame.data[3];
                         break;
 
-                    case 0x101: // Front temperature
+                    case 0b001000000001: // Front temperature
                         latest_can_data_.temperature_front_left = (frame.data[4] << 8) | frame.data[5];
                         latest_can_data_.temperature_front_right = (frame.data[6] << 8) | frame.data[7];
                         latest_can_data_.temperature_front_timestamp = (frame.data[0] << 24) | (frame.data[1] << 16) | (frame.data[2] << 8) | frame.data[3];
                         break;
 
-                    case 0x200: // Rear throttle
+                    case 0b001100000000: // Rear throttle
                         latest_can_data_.throttle_rear_left = (frame.data[4] << 8) | frame.data[5];
                         latest_can_data_.throttle_rear_right = (frame.data[6] << 8) | frame.data[7];
                         latest_can_data_.throttle_rear_timestamp = (frame.data[0] << 24) | (frame.data[1] << 16) | (frame.data[2] << 8) |frame.data[3];
                         break;
 
-                    case 0x201: // Rear temperature
+                    case 0b001100000001: // Rear temperature
                         latest_can_data_.temperature_rear_left = (frame.data[4] << 8) | frame.data[5];
                         latest_can_data_.temperature_rear_right = (frame.data[6] << 8) | frame.data[7];
                         latest_can_data_.temperature_rear_timestamp = (frame.data[0] << 24) | (frame.data[1] << 16) | (frame.data[2] << 8) | frame.data[3];
-                        break;
-
-                    case 0x300: // Steering
-                        latest_can_data_.steering_angle = (frame.data[0] << 8) | frame.data[1];
-                        latest_can_data_.steering_torque_high = (frame.data[2] << 8) | frame.data[3];
-                        latest_can_data_.steering_torque_low = (frame.data[4] << 8) | frame.data[5];
                         break;
 
                     default:
@@ -144,6 +139,7 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_activate(
     const rclcpp_lifecycle::State &)
 {
     RCLCPP_INFO(get_logger(), "Activating Robot4FarmersHardware");
+#if CAN_AVAILABLE
     open_can();
     if (can_socket_fd_ < 0) {
         RCLCPP_ERROR(get_logger(), "Cannot activate: CAN socket not connected");
@@ -152,6 +148,7 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_activate(
 
     can_running_ = true;
     can_thread_ = std::thread(&Robot4FarmersHardware::can_loop, this);
+#endif
 
     for (auto &joint : joints_)
     {
@@ -216,6 +213,7 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_deactivate(
 {
     RCLCPP_INFO(get_logger(), "Deactivating Robot4FarmersHardware");
 
+#if CAN_AVAILABLE
     can_running_ = false;
 
     if (can_socket_fd_ >= 0) 
@@ -229,6 +227,7 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_deactivate(
         can_thread_.join();
     }
 
+#endif
 
     for (auto &joint : joints_)
     {
@@ -291,6 +290,7 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_deactivate(
 hardware_interface::return_type Robot4FarmersHardware::read(
     const rclcpp::Time &, const rclcpp::Duration &period)
 {
+#if CAN_AVAILABLE
     {
         std::lock_guard<std::mutex> lock(can_mutex_);
         for (auto &joint : joints_)
@@ -329,17 +329,20 @@ hardware_interface::return_type Robot4FarmersHardware::read(
             }
         }
     }
+#endif
     return hardware_interface::return_type::OK;
 }
 
 hardware_interface::return_type Robot4FarmersHardware::write(
     const rclcpp::Time &, const rclcpp::Duration &)
 {
+#if CAN_AVAILABLE
     if (can_socket_fd_ < 0)
     {
         RCLCPP_ERROR(get_logger(), "CAN socket not connected");
         return hardware_interface::return_type::ERROR;
     }
+#endif
     // In a real implementation, you would write commands to the CAN bus here.
     // For this example, we just log the commands that would be sent.
     for (const auto &joint : joints_)    {
@@ -373,7 +376,9 @@ hardware_interface::return_type Robot4FarmersHardware::write(
                     velocity);
             }
 #else
-            RCLCPP_INFO(get_logger(), "Writing command for %s: velocity=%.2f", joint.joint_name.c_str(), joint.command.velocity);
+            if (write_rear % 1000 == 0)
+                RCLCPP_INFO(get_logger(), "Writing command for %s: velocity=%.2f", joint.joint_name.c_str(), joint.command.velocity);
+            write_rear++;
 #endif
         }
         else if (joint.joint_name.find("front") != std::string::npos)
@@ -401,7 +406,9 @@ hardware_interface::return_type Robot4FarmersHardware::write(
                     velocity);
             }
 #else
-            RCLCPP_INFO(get_logger(), "Writing command for %s: velocity=%.2f", joint.joint_name.c_str(), joint.command.velocity);
+            if (write_front % 1000 == 0)
+                RCLCPP_INFO(get_logger(), "Writing command for %s: velocity=%.2f", joint.joint_name.c_str(), joint.command.velocity);
+            write_front++;
 #endif
         }
         else if (joint.joint_name.find("direction") != std::string::npos)
@@ -410,7 +417,9 @@ hardware_interface::return_type Robot4FarmersHardware::write(
             //::write(can_socket_fd_, &joint.command.direction, sizeof(joint.command.direction));
             RCLCPP_INFO(get_logger(), "Writing command for %s: direction=%.2f", joint.joint_name.c_str(), joint.command.direction);
 #else
-            RCLCPP_INFO(get_logger(), "Writing command for %s: direction=%.2f", joint.joint_name.c_str(), joint.command.direction);
+            if (write_direction % 1000 == 0)
+                RCLCPP_INFO(get_logger(), "Writing command for %s: direction=%.2f", joint.joint_name.c_str(), joint.command.direction);
+            write_direction++;
 #endif
         }
     }

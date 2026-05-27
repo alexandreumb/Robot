@@ -89,9 +89,6 @@ public:
     SteeringControllerStateMsg;  // unused, but kept for backwards compatibility
 
 protected:
-  controller_interface::CallbackReturn set_interface_numbers(
-    size_t nr_state_itfs, size_t nr_cmd_itfs, size_t nr_ref_itfs);
-
   std::shared_ptr<steering_controllers_library::ParamListener> param_listener_;
   steering_controllers_library::Params params_;
 

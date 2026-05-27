@@ -148,6 +148,10 @@ namespace example
         std::mutex can_mutex_;
 
         JointValue latest_can_data_; // protegido por can_mutex_
+
+        int write_front {0};
+        int write_rear {0};
+        int write_direction {0};
     };
 
 } // namespace example

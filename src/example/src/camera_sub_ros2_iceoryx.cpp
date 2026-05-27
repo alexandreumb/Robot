@@ -181,14 +181,26 @@ int main(int argc, char ** argv)
         // ── Step 1: check if we there is any message to get ────────────────────────
         try {
             if (!sub->take(*msg, info)) {
-                __asm__ volatile("pause" ::: "memory");
+                #if defined(__x86_64__) || defined(__i386__)
+                    __asm__ volatile("pause" ::: "memory");
+                #elif defined(__aarch64__) || defined(__arm__)
+                    __asm__ volatile("yield" ::: "memory");
+                #else
+                    std::this_thread::yield();  
+                #endif              
                 continue;
             }
         }
         catch (const rclcpp::exceptions::RCLError & e) {
             // rmw_iceoryx throws when queue is empty instead of returning false
             // this is a known bug in rmw_iceoryx — just continue spinning
-            __asm__ volatile("pause" ::: "memory");
+            #if defined(__x86_64__) || defined(__i386__)
+                __asm__ volatile("pause" ::: "memory");
+            #elif defined(__aarch64__) || defined(__arm__)
+                __asm__ volatile("yield" ::: "memory");
+            #else
+                std::this_thread::yield(); 
+            #endif           
             continue;
         }
 

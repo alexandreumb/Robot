@@ -19,6 +19,7 @@
 #include <sstream>
 #include <vector>
 #include <limits>
+#include <thread>
 
 using Image8Mb = fixed_size_msgs::msg::Image8Mb;
 
@@ -249,7 +250,13 @@ int main(int argc, char ** argv)
         })
         .or_else([](auto &) {
             // no chunk available — yield to avoid starving other threads
-            __asm__ volatile("pause" ::: "memory");  // CPU hint to reduce power/contention
+            #if defined(__x86_64__) || defined(__i386__)
+                __asm__ volatile("pause" ::: "memory");
+            #elif defined(__aarch64__) || defined(__arm__)
+                __asm__ volatile("yield" ::: "memory");
+            #else
+                std::this_thread::yield();
+            #endif
         });
     }
 
