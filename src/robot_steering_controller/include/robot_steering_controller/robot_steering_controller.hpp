@@ -1,21 +1,4 @@
-  // Copyright (c) 2023, Stogl Robotics Consulting UG (haftungsbeschränkt)
-  //
-  // Licensed under the Apache License, Version 2.0 (the "License");
-  // you may not use this file except in compliance with the License.
-  // You may obtain a copy of the License at
-  //
-  //     http://www.apache.org/licenses/LICENSE-2.0
-  //
-  // Unless required by applicable law or agreed to in writing, software
-  // distributed under the License is distributed on an "AS IS" BASIS,
-  // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  // See the License for the specific language governing permissions and
-  // limitations under the License.
-  //
-  // Authors: dr. sc. Tomislav Petkovic, Dr. Ing. Denis Štogl
-  //
-
-  #ifndef ROBOT_STEERING_CONTROLLER__ROBOT_STEERING_CONTROLLER_HPP_
+#ifndef ROBOT_STEERING_CONTROLLER__ROBOT_STEERING_CONTROLLER_HPP_
   #define ROBOT_STEERING_CONTROLLER__ROBOT_STEERING_CONTROLLER_HPP_
 
   #include <memory>
@@ -31,28 +14,31 @@
   #include "std_srvs/srv/set_bool.hpp"
   #include "robot_steering_controller/steering_odometry.hpp"
 
-  // TODO(anyone): Replace with controller specific messages
   #include "control_msgs/msg/steering_controller_status.hpp"
   #include "geometry_msgs/msg/twist_stamped.hpp"
   #include "nav_msgs/msg/odometry.hpp"
   #include "tf2_msgs/msg/tf_message.hpp"
+  #include "msgs/msg/img_analyze_msg.hpp"
+  #include "msgs/msg/object_struct.hpp"
 
   #include <utility>
 
   namespace robot_steering_controller
   {
   // name constants for state interfaces
-  static constexpr size_t STATE_TRACTION_FRONT_WHEEL = 0;
-  static constexpr size_t STATE_TRACTION_REAR_WHEEL = 1;
-  static constexpr size_t STATE_STEER = 2;
+  static constexpr size_t POS_Z = 35;
+  static constexpr size_t POS_Y = 36;
+  static constexpr size_t POS_X = 37;
+  static constexpr size_t VEL_NORTH = 38;
+  static constexpr size_t VEL_EAST = 39;
+  static constexpr size_t HEADING = 40;
 
   // name constants for command interfaces
-  static constexpr size_t CMD_TRACTION_FRONT_WHEEL = 0;
-  static constexpr size_t CMD_TRACTION_REAR_WHEEL = 1;
-  static constexpr size_t CMD_STEER = 2;
+  static constexpr size_t CMD_TRACTION_WHEELS = 0;
+  static constexpr size_t CMD_STEERING = 1;
 
   static constexpr size_t NR_STATE_ITFS = 3;
-  static constexpr size_t NR_CMD_ITFS = 3;
+  static constexpr size_t NR_CMD_ITFS = 2;
   static constexpr size_t NR_REF_ITFS = 2;
 
   class RobotSteeringController : public controller_interface::ChainableControllerInterface
@@ -93,15 +79,17 @@
     using ControllerStateMsgOdom = nav_msgs::msg::Odometry;
     using ControllerStateMsgTf = tf2_msgs::msg::TFMessage;
     using SteeringControllerStateMsg = control_msgs::msg::SteeringControllerStatus;
-    
+    using ImgAnalyzeMsg = msgs::msg::ImgAnalyzeMsg;
+    using ObjectStruct = msgs::msg::ObjectStruct;
+
   protected:
     controller_interface::CallbackReturn set_interface_numbers(size_t nr_state_itfs, size_t nr_cmd_itfs, size_t nr_ref_itfs);
   
     std::vector<hardware_interface::CommandInterface> on_export_reference_interfaces() override;
 
-    realtime_tools::RealtimeBuffer<std::shared_ptr<ControllerTwistReferenceMsg>> input_ref_;
+    realtime_tools::RealtimeBuffer<std::shared_ptr<ImgAnalyzeMsg>> input_ref_;
 
-    rclcpp::Subscription<ControllerTwistReferenceMsg>::SharedPtr ref_subscriber_twist_ = nullptr;
+    rclcpp::Subscription<ImgAnalyzeMsg>::SharedPtr ref_subscriber_image_ = nullptr;
     rclcpp::Duration ref_timeout_ = rclcpp::Duration::from_seconds(0.0);  // 0ms
 
     using ControllerStatePublisherOdom = realtime_tools::RealtimePublisher<ControllerStateMsgOdom>;
@@ -128,17 +116,18 @@
     std::vector<std::string> axes_names_;
     std::vector<std::string> direction_names_;
 
+    int id{0};
 
     // name constants for state interfaces
     size_t nr_state_itfs_{3};
     // name constants for command interfaces
-    size_t nr_cmd_itfs_{3};
+    size_t nr_cmd_itfs_{2};
     // name constants for reference interfaces
     size_t nr_ref_itfs_{3};
 
   private:
     ROBOT_STEERING_CONTROLLER__VISIBILITY_LOCAL void reference_callback(
-      const std::shared_ptr<ControllerTwistReferenceMsg> msg);
+      const std::shared_ptr<ImgAnalyzeMsg> msg);
   };
 
   

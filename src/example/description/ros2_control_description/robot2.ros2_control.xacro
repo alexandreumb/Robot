@@ -29,7 +29,6 @@
         <state_interface name="brake_front_left"/>
         <state_interface name="brake_front_right"/>
         <state_interface name="brake_front_timestamp"/>
-        <command_interface name="velocity"/>
       </joint>
       <joint name="rear_wheels_joint">
         <state_interface name="temperature_rear_left"/>
@@ -47,7 +46,6 @@
         <state_interface name="brake_rear_left"/>
         <state_interface name="brake_rear_right"/>
         <state_interface name="brake_rear_timestamp"/>
-        <command_interface name="velocity"/>
       </joint>
       <joint name="direction_joint">
         <state_interface name="steering_angle"/>
@@ -55,6 +53,7 @@
         <state_interface name="steering_torque_high"/>
         <state_interface name="steering_torque_low"/>
         <state_interface name="steering_torque_timestamp"/>
+        <command_interface name="velocity"/>
         <command_interface name="direction"/>
       </joint>
     </ros2_control>

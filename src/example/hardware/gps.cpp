@@ -22,7 +22,7 @@
 namespace example
 {
 
-#define GPS_ACTIVE 1
+#define GPS_ACTIVE 0
 
 //////////////////////////////////////////////////////////////
 // SOCKET

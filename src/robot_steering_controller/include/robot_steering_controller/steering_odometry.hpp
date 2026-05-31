@@ -54,74 +54,20 @@ public:
   void init(const rclcpp::Time & time);
 
   /**
-   * \brief Updates the odometry class with latest wheels position
-   * \param traction_wheel_pos  traction wheel position [rad]
-   * \param steer_pos Steer wheel position [rad]
+   * \brief Updates the odometry class with latest robot position
+   * \param heading Robot heading [rad]
+   * \param current_pos_x Current x position [m]
+   * \param current_pos_y Current y position [m]
+   * \param current_pos_z Current z position [m]
+   * \param next_pos_x Next x position [m]
+   * \param next_pos_y Next y position [m]
+   * \param next_pos_z Next z position [m]
    * \param dt      time difference to last call
    * \return true if the odometry is actually updated
    */
-  bool update_from_position(
-    const double traction_wheel_pos, const double steer_pos, const double dt);
-
-  /**
-   * \brief Updates the odometry class with latest wheels position
-   * \param right_traction_wheel_pos  Right traction wheel velocity [rad]
-   * \param left_traction_wheel_pos  Left traction wheel velocity [rad]
-   * \param steer_pos Steer wheel position [rad]
-   * \param dt      time difference to last call
-   * \return true if the odometry is actually updated
-   */
-  bool update_from_position(
-    const double right_traction_wheel_pos, const double left_traction_wheel_pos,
-    const double steer_pos, const double dt);
-
-  /**
-   * \brief Updates the odometry class with latest wheels position
-   * \param right_traction_wheel_pos  Right traction wheel position [rad]
-   * \param left_traction_wheel_pos  Left traction wheel position [rad]
-   * \param right_steer_pos Right steer wheel position [rad]
-   * \param left_steer_pos Left steer wheel position [rad]
-   * \param dt      time difference to last call
-   * \return true if the odometry is actually updated
-   */
-  bool update_from_position(
-    const double right_traction_wheel_pos, const double left_traction_wheel_pos,
-    const double right_steer_pos, const double left_steer_pos, const double dt);
-
-  /**
-   * \brief Updates the odometry class with latest wheels position
-   * \param traction_wheel_vel  Traction wheel velocity [rad/s]
-   * \param steer_pos Steer wheel position [rad]
-   * \param dt      time difference to last call
-   * \return true if the odometry is actually updated
-   */
-  bool update_from_velocity(
-    const double traction_wheel_vel, const double steer_pos, const double dt);
-
-  /**
-   * \brief Updates the odometry class with latest wheels position
-   * \param right_traction_wheel_vel  Right traction wheel velocity [rad/s]
-   * \param left_traction_wheel_vel  Left traction wheel velocity [rad/s]
-   * \param steer_pos Steer wheel position [rad]
-   * \param dt      time difference to last call
-   * \return true if the odometry is actually updated
-   */
-  bool update_from_velocity(
-    const double right_traction_wheel_vel, const double left_traction_wheel_vel,
-    const double steer_pos, const double dt);
-
-  /**
-   * \brief Updates the odometry class with latest wheels position
-   * \param right_traction_wheel_vel  Right traction wheel velocity [rad/s]
-   * \param left_traction_wheel_vel  Left traction wheel velocity [rad/s]
-   * \param right_steer_pos Right steer wheel position [rad]
-   * \param left_steer_pos Left steer wheel position [rad]
-   * \param dt      time difference to last call
-   * \return true if the odometry is actually updated
-   */
-  bool update_from_velocity(
-    const double right_traction_wheel_vel, const double left_traction_wheel_vel,
-    const double right_steer_pos, const double left_steer_pos, const double dt);
+bool update_from_position(
+  const double heading, const double current_pos_x, const double current_pos_y, const double current_pos_z,
+  const double next_pos_x, const double next_pos_y, const double next_pos_z, const double dt);
 
   /**
    * \brief Updates the odometry class with latest velocity command
@@ -168,10 +114,13 @@ public:
   double get_angular() const { return angular_; }
 
   /**
-   * \brief Sets the wheel parameters: radius, separation and wheelbase
+   * \brief Sets default parameters: wheelbase and maximum steering angle
+   * \param wheelbase Wheelbase of the robot [m]
+   * \param max_steering_angle Maximum steering angle [degrees]
+   * \param max_velocity Maximum velocity [m/s]
    */
-  void set_wheel_params(
-    const double wheel_radius, const double wheelbase = 0.0, const double wheel_track = 0.0);
+
+  void set_default_params(double wheelbase, double max_steering_angle, double max_velocity);
 
   /**
    * \brief Velocity rolling window size setter
@@ -180,17 +129,11 @@ public:
   void set_velocity_rolling_window_size(const size_t velocity_rolling_window_size);
 
   /**
-   * \brief Calculates inverse kinematics for the desired linear and angular velocities
-   * \param v_bx     Desired linear velocity of the robot in x_b-axis direction
-   * \param omega_bz Desired angular velocity of the robot around x_z-axis
-   * \param open_loop If false, the IK will be calculated using measured steering angle
-   * \param reduce_wheel_speed_until_steering_reached Reduce wheel speed until the steering angle
-   * has been reached
+   * \brief Get velocity and steering commands based on the current odometry and the desired velocity
+   * \param velocity Desired linear velocity [m/s]
    * \return Tuple of velocity commands and steering commands
    */
-  std::tuple<std::vector<double>, std::vector<double>> get_commands(
-    const double v_bx, const double omega_bz, const bool open_loop = true,
-    const bool reduce_wheel_speed_until_steering_reached = false);
+  std::tuple<double, double> get_commands(const double velocity);
 
   /**
    *  \brief Reset poses, heading, and accumulators
@@ -250,12 +193,15 @@ private:
   /// Current pose:
   double x_;          //   [m]
   double y_;          //   [m]
+  double z_;          //   [m]
   double steer_pos_;  // [rad]
   double heading_;    // [rad]
+  double max_steering_angle_; // [degrees]
 
   /// Current velocity:
   double linear_;   //   [m/s]
   double angular_;  // [rad/s]
+  double max_velocity_; // [m/s]
 
   /// Kinematic parameters
   double wheel_track_;   // [m]

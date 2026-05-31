@@ -169,8 +169,6 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_activate(
             joint.state.reverse_rear_left = 0;
             joint.state.reverse_rear_right = 0;
             joint.state.reverse_rear_timestamp = 0;
-
-            joint.command.velocity = 0;      
         }
         else if (joint.joint_name.find("front") != std::string::npos)
         {
@@ -189,8 +187,6 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_activate(
             joint.state.reverse_front_left = 0;
             joint.state.reverse_front_right = 0;
             joint.state.reverse_front_timestamp = 0;
-
-            joint.command.velocity = 0;
         }
         else if (joint.joint_name.find("direction") != std::string::npos)
         {
@@ -200,6 +196,7 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_activate(
             joint.state.steering_torque_low = 0;
             joint.state.steering_torque_timestamp = 0;
 
+            joint.command.velocity = 0;      
             joint.command.direction = 0;
         }
     }
@@ -248,8 +245,6 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_deactivate(
             joint.state.reverse_rear_left = 0;
             joint.state.reverse_rear_right = 0;
             joint.state.reverse_rear_timestamp = 0;
-
-            joint.command.velocity = 0;
         }
         else if (joint.joint_name.find("front") != std::string::npos)
         {
@@ -268,8 +263,6 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_deactivate(
             joint.state.reverse_front_left = 0;
             joint.state.reverse_front_right = 0;
             joint.state.reverse_front_timestamp = 0;
-
-            joint.command.velocity = 0;
         }
         else if (joint.joint_name.find("direction") != std::string::npos)
         {
@@ -279,6 +272,7 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_deactivate(
             joint.state.steering_torque_low = 0;
             joint.state.steering_torque_timestamp = 0;
 
+            joint.command.velocity = 0;      
             joint.command.direction = 0;
         }
     }
@@ -351,67 +345,7 @@ hardware_interface::return_type Robot4FarmersHardware::write(
         stuct can_frame frame{};
         frame.dlc = 8; // Data length code (number of bytes in data)
 #endif
-        if (joint.joint_name.find("rear") != std::string::npos)
-        {
-#if SEND_CAN_COMMANDS
-            frame.can_id = 0x200; // Example CAN ID for rear throttle
-            int16_t velocity_command = static_cast<int16_t>(joint.command.velocity);
-
-            frame.data[0] = (velocity_command >> 8) & 0xFF; // High byte
-            frame.data[1] = velocity_command & 0xFF;        // Low byte
-
-            ssize_t bytes_written = ::write(can_socket_fd_, &frame, sizeof(struct can_frame));
-
-            if (bytes_written != sizeof(frame))
-            {
-                RCLCPP_ERROR(
-                    get_logger(),
-                    "Failed to send rear velocity CAN frame");
-            }
-            else
-            {
-                RCLCPP_INFO(
-                    get_logger(),
-                    "Rear velocity command sent: %d",
-                    velocity);
-            }
-#else
-            if (write_rear % 1000 == 0)
-                RCLCPP_INFO(get_logger(), "Writing command for %s: velocity=%.2f", joint.joint_name.c_str(), joint.command.velocity);
-            write_rear++;
-#endif
-        }
-        else if (joint.joint_name.find("front") != std::string::npos)
-        {
-#if SEND_CAN_COMMANDS
-            frame.can_id = 0x100; // Example CAN ID for front throttle
-            int16_t velocity_command = static_cast<int16_t>(joint.command.velocity);
-
-            frame.data[0] = (velocity_command >> 8) & 0xFF; // High byte
-            frame.data[1] = velocity_command & 0xFF;        // Low byte
-
-            ssize_t bytes_written = ::write(can_socket_fd_, &frame, sizeof(struct can_frame));
-
-            if (bytes_written != sizeof(frame))
-            {
-                RCLCPP_ERROR(
-                    get_logger(),
-                    "Failed to send front velocity CAN frame");
-            }
-            else
-            {
-                RCLCPP_INFO(
-                    get_logger(),
-                    "Front velocity command sent: %d",
-                    velocity);
-            }
-#else
-            if (write_front % 1000 == 0)
-                RCLCPP_INFO(get_logger(), "Writing command for %s: velocity=%.2f", joint.joint_name.c_str(), joint.command.velocity);
-            write_front++;
-#endif
-        }
-        else if (joint.joint_name.find("direction") != std::string::npos)
+        if (joint.joint_name.find("direction") != std::string::npos)
         {
 #if SEND_CAN_COMMANDS
             //::write(can_socket_fd_, &joint.command.direction, sizeof(joint.command.direction));
@@ -473,15 +407,7 @@ double Robot4FarmersHardware::get_command(const std::string &name)
     {
         if (joint.joint_name == name)
         {
-            if (name.find("rear") != std::string::npos)
-            {
-                return joint.command.velocity;
-            }
-            else if (name.find("front") != std::string::npos)
-            {
-                return joint.command.velocity; // Assuming front joints use velocity_front_left for command
-            }
-            else if (name.find("direction") != std::string::npos)
+            if (name.find("direction") != std::string::npos)
             {
                 return joint.command.direction;
             }
@@ -497,16 +423,9 @@ void Robot4FarmersHardware::set_command(const std::string &name, double value)
     {
         if (joint.joint_name == name)
         {
-            if (name.find("rear") != std::string::npos)
+            if (name.find("direction") != std::string::npos)
             {
                 joint.command.velocity = value;
-            }
-            else if (name.find("front") != std::string::npos)
-            {
-                joint.command.velocity = value;
-            }
-            else if (name.find("direction") != std::string::npos)
-            {
                 joint.command.direction = value;
             }
             return;
@@ -729,24 +648,14 @@ std::vector<hardware_interface::CommandInterface> Robot4FarmersHardware::export_
     // Use index-based loop instead of range-based
     for (auto &joint : joints_)
     {
-        if (joint.joint_name.find("rear") != std::string::npos)
+        if (joint.joint_name.find("direction") != std::string::npos)
         {
             command_interfaces.emplace_back(
             hardware_interface::CommandInterface(
                 joint.joint_name, 
                 hardware_interface::HW_IF_VELOCITY, 
                 &joint.command.velocity));
-        }
-        else if (joint.joint_name.find("front") != std::string::npos)
-        {
-            command_interfaces.emplace_back(
-            hardware_interface::CommandInterface(
-                joint.joint_name, 
-                hardware_interface::HW_IF_VELOCITY, 
-                &joint.command.velocity));
-        }
-        else if (joint.joint_name.find("direction") != std::string::npos)
-        {
+                
             command_interfaces.emplace_back(
             hardware_interface::CommandInterface(
                 joint.joint_name, 

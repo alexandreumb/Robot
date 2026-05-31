@@ -27,21 +27,21 @@
 
 namespace utility
 {
-using ControllerTwistReferenceMsg =
-  robot_steering_controller::RobotSteeringController::ControllerTwistReferenceMsg;
+using ImgAnalyzeMsg =
+  robot_steering_controller::RobotSteeringController::ImgAnalyzeMsg;
 
 // called from RT control loop
 void reset_controller_reference_msg(
-  const std::shared_ptr<ControllerTwistReferenceMsg> & msg,
+  const std::shared_ptr<ImgAnalyzeMsg> & msg,
   const std::shared_ptr<rclcpp_lifecycle::LifecycleNode> & node)
 {
-  msg->header.stamp = node->now();
-  msg->twist.linear.x = std::numeric_limits<double>::quiet_NaN();
-  msg->twist.linear.y = std::numeric_limits<double>::quiet_NaN();
-  msg->twist.linear.z = std::numeric_limits<double>::quiet_NaN();
-  msg->twist.angular.x = std::numeric_limits<double>::quiet_NaN();
-  msg->twist.angular.y = std::numeric_limits<double>::quiet_NaN();
-  msg->twist.angular.z = std::numeric_limits<double>::quiet_NaN();
+  for (size_t i = 0; i < msg->object.size(); ++i)
+  {
+    msg->object[i].name = "";
+    msg->object[i].distance = std::numeric_limits<double>::quiet_NaN();
+    msg->object[i].confidence = std::numeric_limits<double>::quiet_NaN();
+  }
+  msg->velocity = 0;
 }
 
 }  // namespace
@@ -68,7 +68,6 @@ controller_interface::CallbackReturn RobotSteeringController::on_init()
   return controller_interface::CallbackReturn::SUCCESS;
 }
 
-
 controller_interface::CallbackReturn RobotSteeringController::on_configure(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
@@ -77,25 +76,15 @@ controller_interface::CallbackReturn RobotSteeringController::on_configure(
   odometry_.set_velocity_rolling_window_size(
     static_cast<size_t>(robot_params_.velocity_rolling_window_size));
 
-
-  gps_sensor_names_ = robot_params_.gps_sensor_names;
   const double front_wheels_radius = robot_params_.front_wheels_radius;
   const double rear_wheels_radius = robot_params_.rear_wheels_radius;
   const double front_wheel_track = robot_params_.front_wheel_track;
   const double rear_wheel_track = robot_params_.rear_wheel_track;
   const double wheelbase = robot_params_.wheelbase;
+  const double max_steering_angle = robot_params_.max_steering_angle;
+  const double max_velocity = robot_params_.max_velocity;
 
-
-  if (robot_params_.front_steering)
-  {
-    odometry_.set_wheel_params(rear_wheels_radius, wheelbase, rear_wheel_track);
-  }
-  else
-  {
-    odometry_.set_wheel_params(front_wheels_radius, wheelbase, front_wheel_track);
-  }
-
-  odometry_.set_odometry_type(steering_odometry::ROBOT_CONFIG);
+  odometry_.set_default_params(wheelbase, max_steering_angle, max_velocity);
 
   nr_state_itfs_ = NR_STATE_ITFS;
   nr_cmd_itfs_ = NR_CMD_ITFS;
@@ -121,6 +110,16 @@ controller_interface::CallbackReturn RobotSteeringController::on_configure(
     return controller_interface::CallbackReturn::ERROR;
   }
 
+  if (!robot_params_.gps_sensor_names.empty() && robot_params_.gps_sensor_names.size() == 1)
+  {
+    gps_sensor_names_ = robot_params_.gps_sensor_names;
+  }
+  else
+  {
+    RCLCPP_ERROR(get_node()->get_logger(), "No GPS sensor names provided, cannot configure controller");
+    return controller_interface::CallbackReturn::ERROR;
+  }
+
   // topics QoS
   auto subscribers_qos = rclcpp::SystemDefaultsQoS();
   subscribers_qos.keep_last(1);
@@ -130,14 +129,14 @@ controller_interface::CallbackReturn RobotSteeringController::on_configure(
   ref_timeout_ = rclcpp::Duration::from_seconds(robot_params_.reference_timeout);
   if (robot_params_.use_stamped_vel)
   {
-    ref_subscriber_twist_ = get_node()->create_subscription<ControllerTwistReferenceMsg>(
+    ref_subscriber_image_ = get_node()->create_subscription<ImgAnalyzeMsg>(
       "~/reference", subscribers_qos,
       std::bind(&RobotSteeringController::reference_callback, this, std::placeholders::_1));
   }
 
 
-  std::shared_ptr<ControllerTwistReferenceMsg> msg =
-    std::make_shared<ControllerTwistReferenceMsg>();
+  std::shared_ptr<ImgAnalyzeMsg> msg =
+    std::make_shared<ImgAnalyzeMsg>();
   utility::reset_controller_reference_msg(msg, get_node());
   input_ref_.writeFromNonRT(msg);
 
@@ -222,74 +221,50 @@ controller_interface::CallbackReturn RobotSteeringController::on_configure(
 }
 
 void RobotSteeringController::reference_callback(
-  const std::shared_ptr<ControllerTwistReferenceMsg> msg)
+  const std::shared_ptr<ImgAnalyzeMsg> msg)
 {
+  /*
   // if no timestamp provided use current time for command timestamp
   if (msg->header.stamp.sec == 0 && msg->header.stamp.nanosec == 0u)
   {
     RCLCPP_WARN(
       get_node()->get_logger(),
       "Timestamp in header is missing, using current time as command timestamp.");
-    msg->header.stamp = get_node()->now();
-  }
-  const auto age_of_last_command = get_node()->now() - msg->header.stamp;
+      msg->header.stamp = get_node()->now();
+    }
+    const auto age_of_last_command = get_node()->now() - msg->header.stamp;
+  */
+  RCLCPP_INFO(get_node()->get_logger(), "Received new reference message with velocity: %f", msg->velocity);
+  const auto age_of_last_command = rclcpp::Duration::from_seconds(0);  // TODO(destogl): add timeout handling back in when using stamped messages
 
   if (ref_timeout_ == rclcpp::Duration::from_seconds(0) || age_of_last_command <= ref_timeout_)
   {
     input_ref_.writeFromNonRT(msg);
   }
-  else
-  {
-    RCLCPP_ERROR(
-      get_node()->get_logger(),
-      "Received message has timestamp %.10f older for %.10f which is more then allowed timeout "
-      "(%.4f).",
-      rclcpp::Time(msg->header.stamp).seconds(), age_of_last_command.seconds(),
-      ref_timeout_.seconds());
-  }
 }
 
 bool RobotSteeringController::update_odometry(const rclcpp::Duration & period)
 {
-  if (robot_params_.open_loop)
-  {
-    odometry_.update_open_loop(last_linear_velocity_, last_angular_velocity_, period.seconds());
-  }
-  else
-  {
-    const double traction_front_wheel_value =
-      state_interfaces_[STATE_TRACTION_FRONT_WHEEL].get_value();
-    const double traction_rear_wheel_value =
-      state_interfaces_[STATE_TRACTION_REAR_WHEEL].get_value();
-    const double steering_position = state_interfaces_[STATE_STEER].get_value();
-    if (
-      std::isfinite(traction_front_wheel_value) && std::isfinite(traction_rear_wheel_value) &&
-      std::isfinite(steering_position))
-    {
-      if (robot_params_.position_feedback)
-      {
-        // Estimate linear and angular velocity using joint information
-        odometry_.update_from_position(
-          traction_front_wheel_value, traction_rear_wheel_value, steering_position,
-          steering_position, period.seconds());
-      }
-      else
-      {
-        // Estimate linear and angular velocity using joint information
-        odometry_.update_from_velocity(
-          traction_front_wheel_value, traction_rear_wheel_value, steering_position,
-          steering_position, period.seconds());
-      }
-    }
-  }
+  const double heading =
+    state_interfaces_[HEADING].get_value();
+  const double position_x =
+    state_interfaces_[POS_X].get_value();
+  const double position_y =
+    state_interfaces_[POS_Y].get_value();
+  const double position_z =
+    state_interfaces_[POS_Z].get_value();
+  const double velocity_north =
+    state_interfaces_[VEL_NORTH].get_value();
+  const double velocity_east =
+    state_interfaces_[VEL_EAST].get_value();
+
+  odometry_.update_from_position(
+    heading, position_x, position_y, position_z,
+    position_x + velocity_east * period.seconds(), position_y + velocity_north * period.seconds(), position_z, period.seconds());
+
   return true;
 }
 
-//Where do they come from? Do we need them?
-// double battery_voltage;
-// double battery_voltage_timestamp;
-// double controller_status;
-// double controller_status_timestamp;
 
 controller_interface::InterfaceConfiguration
 RobotSteeringController::state_interface_configuration() const
@@ -414,25 +389,10 @@ RobotSteeringController::command_interface_configuration() const
   command_interfaces_config.type = controller_interface::interface_configuration_type::INDIVIDUAL;
   command_interfaces_config.names.reserve(nr_cmd_itfs_);
 
-
-  for (size_t i = 0; i < axes_names_.size(); i++)
-  {
-    if (axes_names_[i].find("front") != std::string::npos) {
-      command_interfaces_config.names.push_back(
-        axes_names_[i] + "/" + hardware_interface::HW_IF_VELOCITY);
-    }
-    else if (axes_names_[i].find("rear") != std::string::npos) {
-      command_interfaces_config.names.push_back(
-        axes_names_[i] + "/" + hardware_interface::HW_IF_VELOCITY);
-    }
-    else {
-      RCLCPP_ERROR(get_node()->get_logger(), "Axis name %s does not include 'front' or 'rear'", axes_names_[i].c_str());
-      return controller_interface::InterfaceConfiguration();
-    }
-  }
-
   for (size_t i = 0; i < direction_names_.size(); i++)
   {
+    command_interfaces_config.names.push_back(
+      direction_names_[i] + "/" + hardware_interface::HW_IF_VELOCITY);
     command_interfaces_config.names.push_back(
       direction_names_[i] + "/direction");
   }
@@ -494,12 +454,17 @@ controller_interface::return_type RobotSteeringController::update_and_write_comm
   if (!is_in_chained_mode())
   {
     auto current_ref = *(input_ref_.readFromRT());
-    if (!std::isnan(current_ref->twist.linear.x) && !std::isnan(current_ref->twist.angular.z))
+    if (!std::isnan(current_ref->velocity) && !std::isnan(current_ref->velocity))
     {
-      reference_interfaces_[0] = current_ref->twist.linear.x;
-      reference_interfaces_[1] = current_ref->twist.angular.z;
+      reference_interfaces_[0] = current_ref->velocity;
+      reference_interfaces_[1] = current_ref->velocity;
     }
+
   }
+  if (id % 100 == 0) {
+    RCLCPP_INFO(get_node()->get_logger(), "Received new reference velocity: %f", reference_interfaces_[0]);
+  }
+  id++;
 
   update_odometry(period);
 
@@ -510,42 +475,21 @@ controller_interface::return_type RobotSteeringController::update_and_write_comm
 
   if (!std::isnan(reference_interfaces_[0]) && !std::isnan(reference_interfaces_[1]))
   {
+    /*
     const auto age_of_last_command = time - (*(input_ref_.readFromRT()))->header.stamp;
     const auto timeout =
-      age_of_last_command > ref_timeout_ && ref_timeout_ != rclcpp::Duration::from_seconds(0);
+    age_of_last_command > ref_timeout_ && ref_timeout_ != rclcpp::Duration::from_seconds(0);
+    */
+    const auto timeout = false;  // TODO(destogl): add timeout handling back in when using stamped messages
 
     // store (for open loop odometry) and set commands
     last_linear_velocity_ = timeout ? 0.0 : reference_interfaces_[0];
     last_angular_velocity_ = timeout ? 0.0 : reference_interfaces_[1];
 
-    auto [traction_commands, steering_commands] = odometry_.get_commands(
-      reference_interfaces_[0], reference_interfaces_[1], robot_params_.open_loop,
-      robot_params_.reduce_wheel_speed_until_steering_reached);
-    if (robot_params_.front_steering)
-    {
-      for (size_t i = 0; i < robot_params_.axes_names.size(); i++)
-      {
-        command_interfaces_[i].set_value(timeout ? 0.0 : traction_commands[i]);
-      }
-      for (size_t i = 0; i < robot_params_.direction_names.size(); i++)
-      {
-        command_interfaces_[i + robot_params_.direction_names.size()].set_value(steering_commands[i]);
-      }
-    }
-    else
-    {
-      { 
-        for (size_t i = 0; i < robot_params_.axes_names.size(); i++)
-        {
-          command_interfaces_[i].set_value(timeout ? 0.0 : traction_commands[i]);
-        }
-        for (size_t i = 0; i < robot_params_.direction_names.size(); i++)
-        {
-          command_interfaces_[i + robot_params_.direction_names.size()].set_value(
-            steering_commands[i]);
-        }
-      }
-    }
+    auto [traction_commands, steering_commands] = odometry_.get_commands(reference_interfaces_[0]);
+
+    command_interfaces_[CMD_TRACTION_WHEELS].set_value(traction_commands);
+    command_interfaces_[CMD_STEERING].set_value(steering_commands);
   }
 
   // Publish odometry message
@@ -553,6 +497,7 @@ controller_interface::return_type RobotSteeringController::update_and_write_comm
   tf2::Quaternion orientation;
   orientation.setRPY(0.0, 0.0, odometry_.get_heading());
 
+  /*
   // Populate odom message and publish
   if (rt_odom_state_publisher_->trylock())
   {
@@ -587,16 +532,10 @@ controller_interface::return_type RobotSteeringController::update_and_write_comm
     controller_state_publisher_->msg_.steer_positions.clear();
     controller_state_publisher_->msg_.steering_angle_command.clear();
 
-    auto number_of_traction_wheels = robot_params_.axes_names.size();
-    auto number_of_steering_wheels = robot_params_.direction_names.size();
+    auto wheel_count = robot_params_.axes_names.size();
+    auto steering_node = robot_params_.direction_names.size();
 
-    if (!robot_params_.front_steering)
-    {
-      number_of_traction_wheels = robot_params_.direction_names.size();
-      number_of_steering_wheels = robot_params_.axes_names.size();
-    }
-
-    for (size_t i = 0; i < number_of_traction_wheels; ++i)
+    for (size_t i = 0; i < wheel_count; ++i)
     {
       if (robot_params_.position_feedback)
       {
@@ -612,16 +551,17 @@ controller_interface::return_type RobotSteeringController::update_and_write_comm
         command_interfaces_[i].get_value());
     }
 
-    for (size_t i = 0; i < number_of_steering_wheels; ++i)
+    for (size_t i = 0; i < steering_node; ++i)
     {
       controller_state_publisher_->msg_.steer_positions.push_back(
-        state_interfaces_[number_of_traction_wheels + i].get_value());
+        state_interfaces_[wheel_count + i].get_value());
       controller_state_publisher_->msg_.steering_angle_command.push_back(
-        command_interfaces_[number_of_traction_wheels + i].get_value());
+        command_interfaces_[wheel_count + i].get_value());
     }
 
     controller_state_publisher_->unlockAndPublish();
   }
+  */
 
   reference_interfaces_[0] = std::numeric_limits<double>::quiet_NaN();
   reference_interfaces_[1] = std::numeric_limits<double>::quiet_NaN();
