@@ -5,6 +5,7 @@
 // Inclui-o apenas no gps.cpp
 #include "gnss_compass_utils/an_packet_protocol.h"
 #include "gnss_compass_utils/ins_packets.h"
+#include "example/geodetic_conv.hpp"
 
 #include <hardware_interface/sensor_interface.hpp>
 #include <hardware_interface/types/hardware_interface_return_values.hpp>
@@ -115,6 +116,8 @@ namespace example
         // ── Helpers ────────────────────────────────────────────
         rclcpp::Clock  get_clock();
         rclcpp::Logger get_logger();
+        bool getNextReferencePoint(std::array<double, 3> current_point, std::array<double, 3> &next_point);
+
 
     private:
         // ── Rede ───────────────────────────────────────────────
@@ -145,6 +148,17 @@ namespace example
         std::vector<GpsJoint> joints_;
 
         rclcpp::Clock clock_;
+
+        std::vector<std::array<double, 3>> waypoints_{};
+        geodetic_converter::GeodeticConverter geodetic_converter_;
+        bool isRefInit{false};
+        double north, east, down;
+        std::array<double, 3> next_waypoint_{};
+
+        FILE *log_file_{nullptr};
+        int flush_counter_{0};
+        std::string file_name_to_reproduce_{""};
+        int read_{0};
     };
 
 } // namespace example

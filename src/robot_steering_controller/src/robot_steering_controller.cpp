@@ -21,7 +21,6 @@
 #include <utility>
 #include <vector>
 
-
 #include "tf2/transform_datatypes.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
@@ -223,7 +222,6 @@ controller_interface::CallbackReturn RobotSteeringController::on_configure(
 void RobotSteeringController::reference_callback(
   const std::shared_ptr<ImgAnalyzeMsg> msg)
 {
-  /*
   // if no timestamp provided use current time for command timestamp
   if (msg->header.stamp.sec == 0 && msg->header.stamp.nanosec == 0u)
   {
@@ -231,11 +229,10 @@ void RobotSteeringController::reference_callback(
       get_node()->get_logger(),
       "Timestamp in header is missing, using current time as command timestamp.");
       msg->header.stamp = get_node()->now();
-    }
-    const auto age_of_last_command = get_node()->now() - msg->header.stamp;
-  */
+  }
+
+  const auto age_of_last_command = get_node()->now() - msg->header.stamp;
   RCLCPP_INFO(get_node()->get_logger(), "Received new reference message with velocity: %f", msg->velocity);
-  const auto age_of_last_command = rclcpp::Duration::from_seconds(0);  // TODO(destogl): add timeout handling back in when using stamped messages
 
   if (ref_timeout_ == rclcpp::Duration::from_seconds(0) || age_of_last_command <= ref_timeout_)
   {
@@ -257,6 +254,12 @@ bool RobotSteeringController::update_odometry(const rclcpp::Duration & period)
     state_interfaces_[VEL_NORTH].get_value();
   const double velocity_east =
     state_interfaces_[VEL_EAST].get_value();
+ 
+  if (id % 100 == 0)
+  {
+    RCLCPP_INFO(get_node()->get_logger(), "Updating odometry with heading: %f, position_x: %f, position_y: %f, velocity_north: %f, velocity_east: %f",
+      heading, position_x, position_y, velocity_north, velocity_east);
+  };
 
   odometry_.update_from_position(
     heading, position_x, position_y, position_z,
@@ -475,12 +478,10 @@ controller_interface::return_type RobotSteeringController::update_and_write_comm
 
   if (!std::isnan(reference_interfaces_[0]) && !std::isnan(reference_interfaces_[1]))
   {
-    /*
+    
     const auto age_of_last_command = time - (*(input_ref_.readFromRT()))->header.stamp;
     const auto timeout =
     age_of_last_command > ref_timeout_ && ref_timeout_ != rclcpp::Duration::from_seconds(0);
-    */
-    const auto timeout = false;  // TODO(destogl): add timeout handling back in when using stamped messages
 
     // store (for open loop odometry) and set commands
     last_linear_velocity_ = timeout ? 0.0 : reference_interfaces_[0];
@@ -497,7 +498,6 @@ controller_interface::return_type RobotSteeringController::update_and_write_comm
   tf2::Quaternion orientation;
   orientation.setRPY(0.0, 0.0, odometry_.get_heading());
 
-  /*
   // Populate odom message and publish
   if (rt_odom_state_publisher_->trylock())
   {
@@ -533,6 +533,7 @@ controller_interface::return_type RobotSteeringController::update_and_write_comm
     controller_state_publisher_->msg_.steering_angle_command.clear();
 
     auto wheel_count = robot_params_.axes_names.size();
+    wheel_count = 0;
     auto steering_node = robot_params_.direction_names.size();
 
     for (size_t i = 0; i < wheel_count; ++i)
@@ -561,7 +562,6 @@ controller_interface::return_type RobotSteeringController::update_and_write_comm
 
     controller_state_publisher_->unlockAndPublish();
   }
-  */
 
   reference_interfaces_[0] = std::numeric_limits<double>::quiet_NaN();
   reference_interfaces_[1] = std::numeric_limits<double>::quiet_NaN();

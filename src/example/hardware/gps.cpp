@@ -1,9 +1,7 @@
 #include "example/gps.hpp"
-
-// SDK — incluído aqui e não no header
 #include "gnss_compass_utils/read_gnss_compass.h"
-
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
+#include "pluginlib/class_list_macros.hpp"
 
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -18,11 +16,14 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <filesystem>
 
 namespace example
 {
 
 #define GPS_ACTIVE 0
+#define WAYPOINT_MIN_DIST_SQ 1
+
 
 //////////////////////////////////////////////////////////////
 // SOCKET
@@ -32,11 +33,39 @@ void GpsHardware::open_socket()
 {
     struct addrinfo hints{}, *addr;
     hints.ai_family   = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;       // TCP
+    hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
+
+#if !read_
+    const std::string output_dir = "/anpp_files";
+    std::filesystem::create_directories(output_dir); 
+
+    char filename[64];
+    time_t rawtime = time(NULL);
+    struct tm* timeinfo = localtime(&rawtime);
+    sprintf(filename, "/ANPP_waypoints_%02d-%02d-%02d-%02d-%02d-%02d.anpp", timeinfo->tm_year + 1900, timeinfo->tm_mon + 1, timeinfo->tm_mday, timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
+
+    std::string filepath = std::string(output_dir) + filename;
+    log_file_ = fopen(filepath.c_str(), "wb");
+#endif
+    
+    if (log_file_ == nullptr) 
+    {
+        RCLCPP_ERROR(get_logger(), "Failed to open log file: %s", filepath.c_str());
+    } 
+    else 
+    {
+        RCLCPP_INFO(get_logger(), "Logging waypoints to: %s", filepath.c_str());
+    }
 
     if (getaddrinfo(ip_.c_str(), std::to_string(port_).c_str(), &hints, &addr) != 0) {
         RCLCPP_ERROR(get_logger(), "Failed to resolve address %s:%d", ip_.c_str(), port_);
+
+        if (log_file_ != nullptr)
+        {
+            fflush(log_file_);
+            fclose(log_file_);
+        }
         return;
     }
 
@@ -44,6 +73,11 @@ void GpsHardware::open_socket()
     if (socket_fd_ < 0) {
         RCLCPP_ERROR(get_logger(), "Failed to create socket");
         freeaddrinfo(addr);
+        if (log_file_ != nullptr)
+        {
+            fflush(log_file_);
+            fclose(log_file_);
+        }
         return;
     }
 
@@ -51,6 +85,11 @@ void GpsHardware::open_socket()
         RCLCPP_ERROR(get_logger(), "Failed to connect to %s:%d", ip_.c_str(), port_);
         close(socket_fd_);
         socket_fd_ = -1;
+        if (log_file_ != nullptr)
+        {
+            fflush(log_file_);
+            fclose(log_file_);
+        }
         freeaddrinfo(addr);
         return;
     }
@@ -79,6 +118,18 @@ void GpsHardware::ethernet_loop()
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
+
+#if !read_
+        if (log_file_ != nullptr)
+        {
+            fwrite(an_decoder_pointer(&an_decoder_), sizeof(uint8_t), bytes_received, log_file_);
+            if (flush_counter_++ == 100)
+            {
+                fflush(log_file_);
+                flush_counter_ = 0;
+            }
+        }
+#endif
 
         an_decoder_increment(&an_decoder_, bytes_received);
 
@@ -182,6 +233,16 @@ hardware_interface::CallbackReturn GpsHardware::on_init(
         ip_ = info_.hardware_parameters.at("ip");
     if (info_.hardware_parameters.count("port"))
         port_ = std::stoi(info_.hardware_parameters.at("port"));
+    if (info_.hardware_parameters.count("file_name"))
+        file_name_to_reproduce_ = info_.hardware_parameters.at("file_name");
+    if (info_.hardware_parameters.count("read"))
+        read_ = std::stoi(info_.hardware_parameters.at("read"));
+            
+    if (file_name_to_reproduce_ == "" && read_ == 1)
+    {
+        RCLCPP_ERROR(get_logger(), "Parameter 'file_name' must be set when 'read' is true");
+        return CallbackReturn::ERROR;
+    }        
 
     joints_.clear();
     for (const auto &sensor : info_.sensors)
@@ -205,17 +266,74 @@ hardware_interface::CallbackReturn GpsHardware::on_configure(
 hardware_interface::CallbackReturn GpsHardware::on_activate(
     const rclcpp_lifecycle::State &)
 {
-#if GPS_ACTIVE
+    if (read_)
+    {
+        // Load entire file into waypoints vector upfront
+        log_file_ = fopen(file_name_to_reproduce_.c_str(), "rb");
+        if (log_file_ == nullptr) {
+            RCLCPP_ERROR(get_logger(), "Cannot open waypoint file: %s", file_name_to_reproduce_.c_str());
+            return CallbackReturn::ERROR;
+        }
+
+        // Your saved format is raw ANPP bytes, so you need to decode the
+        // whole file first, then extract waypoints from decoded packets.
+        // Read everything into a buffer:
+        fseek(log_file_, 0, SEEK_END);
+        long file_size = ftell(log_file_);
+        rewind(log_file_);
+
+        std::vector<uint8_t> raw(file_size);
+        fread(raw.data(), sizeof(uint8_t), file_size, log_file_);
+        fclose(log_file_);
+
+        // Feed into the ANPP decoder and extract all system_state packets
+        an_decoder_t decoder;
+        an_decoder_initialise(&decoder);
+        an_packet_t* packet;
+
+        size_t offset = 0;
+        while (offset < raw.size()) {
+            size_t space = an_decoder_size(&decoder);
+            size_t to_copy = std::min(space, raw.size() - offset);
+            memcpy(an_decoder_pointer(&decoder), raw.data() + offset, to_copy);
+            an_decoder_increment(&decoder, to_copy);
+            offset += to_copy;
+
+            while ((packet = an_packet_decode(&decoder)) != nullptr) {
+                if (packet->id == packet_id_system_state) {
+                    system_state_packet_t ssp;
+                    if (decode_system_state_packet(&ssp, packet) == 0) {
+                        // Convert to NED and store as waypoint
+                        // (reference will be set on first RTK fix in read())
+                        // Store raw geodetic for now, convert later
+                        waypoints_.push_back({
+                            ssp.latitude,
+                            ssp.longitude,
+                            ssp.height
+                        });
+                    }
+                }
+                an_packet_free(&packet);
+            }
+        }
+
+        RCLCPP_INFO(get_logger(), "Loaded %zu waypoints from file", waypoints_.size());
+
+        if (waypoints_.empty()) {
+            RCLCPP_ERROR(get_logger(), "No waypoints found in file");
+            return CallbackReturn::ERROR;
+        }
+    }
+
+    // Live mode — open socket and start thread as before
     open_socket();
     if (socket_fd_ < 0) {
         RCLCPP_ERROR(get_logger(), "Cannot activate: socket not connected");
         return CallbackReturn::ERROR;
     }
-
     running_ = true;
     reader_thread_ = std::thread(&GpsHardware::ethernet_loop, this);
 
-#endif
     RCLCPP_INFO(get_logger(), "GpsHardware activated");
     return CallbackReturn::SUCCESS;
 }
@@ -233,6 +351,13 @@ hardware_interface::CallbackReturn GpsHardware::on_deactivate(
         close(socket_fd_);
         socket_fd_ = -1;
     }
+
+    if (log_file_ != nullptr)    
+    {
+        fflush(log_file_);
+        fclose(log_file_);
+    }
+
 #endif
     RCLCPP_INFO(get_logger(), "GpsHardware deactivated");
     return CallbackReturn::SUCCESS;
@@ -284,9 +409,45 @@ hardware_interface::return_type GpsHardware::read(
         std::lock_guard<std::mutex> lock(gps_mutex_);
         copy = latest_data_;
     }
+
+#if read_
+    if (!isRefInit) 
+    {
+        if (fix_type == gnss_fix_type_e::gnss_fix_rtk_fixed) 
+        {
+            geodetic_converter_.initialiseReference(copy.latitude, copy.longitude, copy.height);
+            geodetic_converter_.geodetic2Ned(copy.latitude, copy.longitude, copy.height,
+                &north, &east, &down);
+            
+            if (getNextReferencePoint({north, east, down}, next_waypoint_))
+            {
+                RCLCPP_INFO(get_logger(), "Initial reference set to: north=%.2f east=%.2f down=%.2f", north, east, down);
+                isRefInit = true;
+            }
+            else
+            {
+                RCLCPP_WARN(get_logger(), "No valid initial waypoint found. Waiting for a valid reference point...");
+            }
+        }
+    }
+    else 
+    {
+        geodetic_converter_.geodetic2Ned(copy.latitude, copy.longitude, copy.height, &north, &east, &down);
+        if (getNextReferencePoint({north, east, down}, next_waypoint_))
+        {
+            RCLCPP_INFO(get_logger(), "Next waypoint: north=%.2f east=%.2f down=%.2f", next_waypoint_[0], next_waypoint_[1], next_waypoint_[2]);
+        }
+        else
+        {
+            RCLCPP_INFO(get_logger(), "No more waypoints found. Holding position at: north=%.2f east=%.2f down=%.2f", north, east, down);
+        }
+    }
 #endif
 
-    for (auto &joint : joints_) {
+#endif
+
+    for (auto &joint : joints_) 
+    {
         joint.state = copy;
         if (i % 100 == 0)
         {
@@ -315,7 +476,35 @@ rclcpp::Logger GpsHardware::get_logger()
     return rclcpp::get_logger("GpsHardware");
 }
 
+bool GpsHardware::getNextReferencePoint(std::array<double, 3> current_point, std::array<double, 3> &next_point)
+{
+    bool waypoint_found = false;
+
+    if(!isRefInit)
+    {
+        for (size_t i = 0; i < waypoints_.size(); i++)
+        {
+            auto waypoint = waypoints_[i];
+            double n, e, d;
+            geodetic_converter_.geodetic2Ned(waypoint[0], waypoint[1], waypoint[2], &n, &e, &d);
+            waypoints_[i] = {n, e, d};
+        }
+    }
+
+    size_t i = 0;
+    for (; i < waypoints_.size(); i++)
+    {
+        int distance = pow(waypoints_[i][0] - current_point[0], 2) + pow(waypoints_[i][1] - current_point[1], 2) + pow(waypoints_[i][2] - current_point[2], 2);
+        distance = sqrt(distance) - WAYPOINT_MIN_DIST_SQ;
+        if (distance > 0)
+        {
+            next_point = waypoints_[i];
+            waypoint_found = true;
+            break;
+        }
+    }
+    return waypoint_found;
+}
 } // namespace example
 
-#include "pluginlib/class_list_macros.hpp"
 PLUGINLIB_EXPORT_CLASS(example::GpsHardware, hardware_interface::SensorInterface)

@@ -11,16 +11,17 @@ from launch_ros.actions import Node
 def generate_launch_description(): 
     use_sim_time = False  # Change to True if using simulation
     declared_arguments = [] 
-    declared_arguments.append( 
-        DeclareLaunchArgument( "gui", default_value="true", description="Use simulation (Gazebo) clock if true", ) ) 
-    
+    declared_arguments.append( DeclareLaunchArgument( "gui", default_value="true", description="Use simulation (Gazebo) clock if true", ) ) 
     declared_arguments.append( DeclareLaunchArgument( "remap_odometry_tf", default_value="true", description="Remap odometry to tf frame", ) ) 
+    declared_arguments.append( DeclareLaunchArgument( "file_name", default_value="", description="File name to reproduce", ) )
+    declared_arguments.append( DeclareLaunchArgument( "read", default_value="0", description="Read value", ) )
     
     #Initialize Arguments 
      
     gui = LaunchConfiguration("gui") 
     remap_odometry_tf = LaunchConfiguration("remap_odometry_tf") 
-    
+    read = LaunchConfiguration("read")
+    file_name = LaunchConfiguration("file_name")
     #Get URDF via xacro 
     
     robot_description_content = Command( 
@@ -34,7 +35,11 @@ def generate_launch_description():
     rviz_config_file = PathJoinSubstitution( [ get_package_share_directory("example"), "rviz/rviz", "rviz.rviz", ] )
     
     control_node_remapped = Node( package="controller_manager", executable="ros2_control_node", 
-                                 parameters=[robot_controllers, {'use_sim_time': use_sim_time}], output="both", 
+                                 parameters=[robot_controllers, 
+                                             {'use_sim_time': use_sim_time},
+                                             {'file_name': file_name},
+                                             {'read': read}
+                                             ], output="both", 
                                  remappings=[ ("~/robot_description", "/robot_description"), 
                                              ("/robot_steering_controller/tf_odometry", "/tf"), ], 
                                              condition=IfCondition(remap_odometry_tf), ) 
@@ -48,7 +53,11 @@ def generate_launch_description():
     
     control_node = Node( package="controller_manager", 
                         executable="ros2_control_node", 
-                        parameters=[robot_controllers, {'use_sim_time': use_sim_time}], 
+                        parameters=[robot_controllers, 
+                                    {'use_sim_time': use_sim_time},
+                                    {'file_name': file_name},
+                                    {'read': read}
+                                    ], 
                         output="both", 
                         remappings=[ ("~/robot_description", "/robot_description"), ], 
                         condition=UnlessCondition(remap_odometry_tf), ) 
