@@ -19,7 +19,8 @@
   <depend>hardware_interface</depend>
   <depend>pluginlib</depend>
   <depend>gnss_compass_utils</depend>
-
+  <depend>msgs</depend>
+  
   <exec_depend>ackermann_steering_controller</exec_depend>
   <exec_depend>robot_steering_controller</exec_depend>
   <exec_depend>controller_manager</exec_depend>

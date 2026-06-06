@@ -114,18 +114,6 @@ void SteeringOdometry::set_velocity_rolling_window_size(size_t velocity_rolling_
   reset_accumulators();
 }
 
-void SteeringOdometry::set_odometry_type(const unsigned int type)
-{
-  config_type_ = static_cast<int>(type);
-}
-
-double SteeringOdometry::convert_twist_to_steering_angle(double v_bx, double omega_bz)
-{
-  // phi can be nan if both v_bx and omega_bz are zero
-  const auto phi = std::atan(omega_bz * wheelbase_ / v_bx);
-  return std::isfinite(phi) ? phi : 0.0;
-}
-
 void SteeringOdometry::reset_odometry()
 {
   x_ = 0.0;

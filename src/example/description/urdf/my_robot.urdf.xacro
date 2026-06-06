@@ -8,6 +8,6 @@
 
   <xacro:Robot4Farmers_description/>
 
-  <xacro:Robot4Farmers use_sim="false" file_name:="" read_:0/>
+  <xacro:Robot4Farmers use_sim="false"/>
 
 </robot>

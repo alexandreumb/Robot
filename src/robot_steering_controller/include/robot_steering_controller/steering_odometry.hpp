@@ -70,20 +70,6 @@ bool update_from_position(
   const double next_pos_x, const double next_pos_y, const double next_pos_z, const double dt);
 
   /**
-   * \brief Updates the odometry class with latest velocity command
-   * \param v_bx  Linear velocity   [m/s]
-   * \param omega_bz Angular velocity [rad/s]
-   * \param dt      time difference to last call
-   */
-  void update_open_loop(const double v_bx, const double omega_bz, const double dt);
-
-  /**
-   * \brief Set odometry type
-   * \param type odometry type
-   */
-  void set_odometry_type(const unsigned int type);
-
-  /**
    * \brief heading getter
    * \return heading [rad]
    */
@@ -150,37 +136,12 @@ private:
   bool update_odometry(const double v_bx, const double omega_bz, const double dt);
 
   /**
-   * \brief Integrates the velocities (linear and angular) using 2nd order Runge-Kutta
-   * \param v_bx Linear velocity [m/s]
-   * \param omega_bz Angular velocity [rad/s]
-   * \param dt time difference to last call
-   */
-  void integrate_runge_kutta_2(const double v_bx, const double omega_bz, const double dt);
-
-  /**
    * \brief Integrates the velocities (linear and angular)
    * \param v_bx Linear velocity [m/s]
    * \param omega_bz Angular velocity [rad/s]
    * \param dt time difference to last call
    */
   void integrate_fk(const double v_bx, const double omega_bz, const double dt);
-
-  /**
-   * \brief Calculates steering angle from the desired twist
-   * \param v_bx     Linear velocity of the robot in x_b-axis direction
-   * \param omega_bz Angular velocity of the robot around x_z-axis
-   */
-  double convert_twist_to_steering_angle(const double v_bx, const double omega_bz);
-
-  /**
-   * \brief Calculates linear velocity of a robot with double traction axle
-   * \param right_traction_wheel_vel  Right traction wheel velocity [rad/s]
-   * \param left_traction_wheel_vel  Left traction wheel velocity [rad/s]
-   * \param steer_pos Steer wheel position [rad]
-   */
-  double get_linear_velocity_double_traction_axle(
-    const double right_traction_wheel_vel, const double left_traction_wheel_vel,
-    const double steer_pos);
 
   /**
    *  \brief Reset linear and angular accumulators

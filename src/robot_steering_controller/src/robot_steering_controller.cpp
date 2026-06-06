@@ -231,13 +231,14 @@ void RobotSteeringController::reference_callback(
       msg->header.stamp = get_node()->now();
   }
 
-  const auto age_of_last_command = get_node()->now() - msg->header.stamp;
-  RCLCPP_INFO(get_node()->get_logger(), "Received new reference message with velocity: %f", msg->velocity);
+  //const auto age_of_last_command = get_node()->now() - msg->header.stamp;
+  const auto age_of_last_command = rclcpp::Duration::from_seconds(0.5);
 
-  if (ref_timeout_ == rclcpp::Duration::from_seconds(0) || age_of_last_command <= ref_timeout_)
+  if (ref_timeout_ == rclcpp::Duratiqon::from_seconds(0) || age_of_last_command <= ref_timeout_)
   {
     input_ref_.writeFromNonRT(msg);
   }
+
 }
 
 bool RobotSteeringController::update_odometry(const rclcpp::Duration & period)
@@ -461,11 +462,10 @@ controller_interface::return_type RobotSteeringController::update_and_write_comm
     {
       reference_interfaces_[0] = current_ref->velocity;
       reference_interfaces_[1] = current_ref->velocity;
+      if (id % 100 == 0) {
+        RCLCPP_INFO(get_node()->get_logger(), "Received new reference velocity: %f", current_ref->velocity);
+      }
     }
-
-  }
-  if (id % 100 == 0) {
-    RCLCPP_INFO(get_node()->get_logger(), "Received new reference velocity: %f", reference_interfaces_[0]);
   }
   id++;
 

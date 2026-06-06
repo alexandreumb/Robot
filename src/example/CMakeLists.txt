@@ -21,6 +21,7 @@ find_package(fixed_size_msgs REQUIRED)
 find_package(iceoryx_posh REQUIRED)
 find_package(iceoryx_hoofs REQUIRED)
 find_package(realsense2 REQUIRED)
+find_package(msgs REQUIRED)
 
 # Include directories
 include_directories(
@@ -54,6 +55,9 @@ target_link_libraries(camera_bridge iceoryx_posh::iceoryx_posh iceoryx_hoofs::ic
 add_executable(camera_sub_nav2 src/camera_sub_nav2.cpp)
 ament_target_dependencies(camera_sub_nav2 rclcpp sensor_msgs OpenCV)
 target_link_libraries(camera_sub_nav2 iceoryx_hoofs::iceoryx_hoofs iceoryx_posh::iceoryx_posh)
+
+add_executable(velocity_change src/velocity_change.cpp)
+ament_target_dependencies(velocity_change rclcpp msgs)
 
 # Install Python modules
 ament_python_install_package(robot_control)
@@ -127,7 +131,7 @@ pluginlib_export_plugin_description_file(hardware_interface example.xml)
 # Install targets
 # ----------------------------
 install(TARGETS
-  camera1_pub camera_bridge camera_sub_nav2 camera_sub_ros2_iceoryx camera_sub_iceoryx_nativo camera_fastrtps_pub camera_fastrtps_sub try camera_2
+  camera1_pub camera_bridge camera_sub_nav2 camera_sub_ros2_iceoryx camera_sub_iceoryx_nativo camera_fastrtps_pub camera_fastrtps_sub try camera_2 velocity_change
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 

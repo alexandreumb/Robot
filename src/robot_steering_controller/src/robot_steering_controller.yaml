@@ -181,3 +181,17 @@ robot_steering_controller:
     description: "Maximum velocity of the robot in m/s.",
     read_only: false,
   }
+
+  read: {
+    type: int,
+    default_value: 0,
+    description: "Whether to read from file or not.",
+    read_only: false,
+  }
+
+  file_name: {
+    type: string,
+    default_value: "",
+    description: "File name to read from.",
+    read_only: false,
+  }

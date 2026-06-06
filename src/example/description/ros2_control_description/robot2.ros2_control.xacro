@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
-  <xacro:macro name="Robot4Farmers" params="use_sim:=false file_name:= read:=0">
+  <xacro:macro name="Robot4Farmers" params="use_sim:=false">
     <ros2_control name="robot2_hardware" type="system">
       <hardware>
         <xacro:if value="${use_sim}">
@@ -65,8 +65,8 @@
           <plugin>example/GpsHardware</plugin>
           <param name="ip">192.168.1.150</param>
           <param name="port">16718</param>
-          <param name="file_name_to_reproduce">$(arg file_name)</param>
-          <param name="read_">$(arg read)</param>
+          <param name="read">$(optenv GPS_READ 0)</param>
+          <param name="file_name">$(optenv GPS_FILE "")</param>
         </hardware>
 
         <sensor name="gps_sensor">

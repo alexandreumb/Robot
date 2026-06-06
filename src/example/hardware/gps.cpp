@@ -37,15 +37,21 @@ void GpsHardware::open_socket()
     hints.ai_protocol = IPPROTO_TCP;
 
 #if !read_
-    const std::string output_dir = "/anpp_files";
+    const char* home = getenv("HOME");
+    if (home == nullptr) {
+        RCLCPP_ERROR(get_logger(), "HOME environment variable not set");
+        return;
+    }
+
+    const std::string output_dir = std::string(home) + "/anpp_files";
     std::filesystem::create_directories(output_dir); 
 
     char filename[64];
     time_t rawtime = time(NULL);
     struct tm* timeinfo = localtime(&rawtime);
-    sprintf(filename, "/ANPP_waypoints_%02d-%02d-%02d-%02d-%02d-%02d.anpp", timeinfo->tm_year + 1900, timeinfo->tm_mon + 1, timeinfo->tm_mday, timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
+    sprintf(filename, "ANPP_waypoints_%02d-%02d-%02d-%02d-%02d-%02d.anpp", timeinfo->tm_year + 1900, timeinfo->tm_mon + 1, timeinfo->tm_mday, timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
 
-    std::string filepath = std::string(output_dir) + filename;
+    std::string filepath = std::string(output_dir) + "/" + filename;
     log_file_ = fopen(filepath.c_str(), "wb");
 #endif
     
@@ -95,6 +101,11 @@ void GpsHardware::open_socket()
     }
     freeaddrinfo(addr);
     RCLCPP_INFO(get_logger(), "Socket connected to %s:%d", ip_.c_str(), port_);
+
+    struct timeval tv;
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+    setsockopt(socket_fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 }
 
 //////////////////////////////////////////////////////////////
@@ -113,10 +124,14 @@ void GpsHardware::ethernet_loop()
         bytes_received = ::read(socket_fd_, an_decoder_pointer(&an_decoder_), an_decoder_size(&an_decoder_));
                 
         if (bytes_received <= 0) {
-            RCLCPP_INFO(get_logger(), "No bytes received");
-            // socket fechado ou erro — aguarda e tenta continuar
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            continue;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                RCLCPP_DEBUG(get_logger(), "Socket read timeout, no data received");
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                continue;
+            } else {
+                RCLCPP_ERROR(get_logger(), "Socket read error: %s", strerror(errno));
+            }
+            break;
         }
 
 #if !read_
@@ -177,7 +192,6 @@ void GpsHardware::ethernet_loop()
                     buffer.body_acceleration_z = system_state_packet_.body_acceleration[2];
 
                     buffer.g_force = system_state_packet_.g_force;
-
                     buffer.roll    = system_state_packet_.orientation[0];
                     buffer.pitch   = system_state_packet_.orientation[1];
                     buffer.heading = system_state_packet_.orientation[2];
@@ -233,16 +247,14 @@ hardware_interface::CallbackReturn GpsHardware::on_init(
         ip_ = info_.hardware_parameters.at("ip");
     if (info_.hardware_parameters.count("port"))
         port_ = std::stoi(info_.hardware_parameters.at("port"));
-    if (info_.hardware_parameters.count("file_name"))
-        file_name_to_reproduce_ = info_.hardware_parameters.at("file_name");
     if (info_.hardware_parameters.count("read"))
-        read_ = std::stoi(info_.hardware_parameters.at("read"));
-            
-    if (file_name_to_reproduce_ == "" && read_ == 1)
+    read_ = std::stoi(info_.hardware_parameters.at("read"));
+        
+    if (read_)
     {
-        RCLCPP_ERROR(get_logger(), "Parameter 'file_name' must be set when 'read' is true");
-        return CallbackReturn::ERROR;
-    }        
+        if (info_.hardware_parameters.count("file_name"))
+            file_name_to_reproduce_ = info_.hardware_parameters.at("file_name");
+    }     
 
     joints_.clear();
     for (const auto &sensor : info_.sensors)
@@ -259,6 +271,7 @@ hardware_interface::CallbackReturn GpsHardware::on_configure(
     gnss_fix_type_prev_ = -1;
     latest_data_        = GPSData{};
 #endif
+
     RCLCPP_INFO(get_logger(), "GpsHardware configured (ip=%s port=%d)", ip_.c_str(), port_);
     return CallbackReturn::SUCCESS;
 }
@@ -325,6 +338,7 @@ hardware_interface::CallbackReturn GpsHardware::on_activate(
         }
     }
 
+#if GPS_ACTIVE
     // Live mode — open socket and start thread as before
     open_socket();
     if (socket_fd_ < 0) {
@@ -333,6 +347,7 @@ hardware_interface::CallbackReturn GpsHardware::on_activate(
     }
     running_ = true;
     reader_thread_ = std::thread(&GpsHardware::ethernet_loop, this);
+#endif
 
     RCLCPP_INFO(get_logger(), "GpsHardware activated");
     return CallbackReturn::SUCCESS;

@@ -64,6 +64,9 @@ robot_steering_controller:
     use_stamped_vel: true
     open_loop: false
     cmd_topic: "/robot_cmd"  # controller will subscribe to this
+    read: 0
+    file_name: ""
+
 
 
 gps_sensor_broadcaster:
