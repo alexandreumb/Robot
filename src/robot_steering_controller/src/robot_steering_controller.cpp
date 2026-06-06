@@ -234,7 +234,7 @@ void RobotSteeringController::reference_callback(
   //const auto age_of_last_command = get_node()->now() - msg->header.stamp;
   const auto age_of_last_command = rclcpp::Duration::from_seconds(0.5);
 
-  if (ref_timeout_ == rclcpp::Duratiqon::from_seconds(0) || age_of_last_command <= ref_timeout_)
+  if (ref_timeout_ == rclcpp::Duration::from_seconds(0) || age_of_last_command <= ref_timeout_)
   {
     input_ref_.writeFromNonRT(msg);
   }
