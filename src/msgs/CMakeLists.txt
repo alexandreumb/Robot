@@ -25,6 +25,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ObjectStruct.msg"
   "msg/ImgAnalyzeMsg.msg"
   "msg/Image8Mb.msg"
+  "msg/Velocity.msg"
   DEPENDENCIES builtin_interfaces std_msgs
   ADD_LINTER_TESTS
 )

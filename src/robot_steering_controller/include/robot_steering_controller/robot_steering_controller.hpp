@@ -19,6 +19,7 @@
   #include "nav_msgs/msg/odometry.hpp"
   #include "tf2_msgs/msg/tf_message.hpp"
   #include "msgs/msg/img_analyze_msg.hpp"
+  #include "msgs/msg/velocity.hpp"
   #include "msgs/msg/object_struct.hpp"
 
   #include <utility>
@@ -80,6 +81,7 @@
     using ControllerStateMsgTf = tf2_msgs::msg::TFMessage;
     using SteeringControllerStateMsg = control_msgs::msg::SteeringControllerStatus;
     using ImgAnalyzeMsg = msgs::msg::ImgAnalyzeMsg;
+    using Velocity = msgs::msg::Velocity;
     using ObjectStruct = msgs::msg::ObjectStruct;
 
   protected:
@@ -87,9 +89,11 @@
   
     std::vector<hardware_interface::CommandInterface> on_export_reference_interfaces() override;
 
-    realtime_tools::RealtimeBuffer<std::shared_ptr<ImgAnalyzeMsg>> input_ref_;
+    realtime_tools::RealtimeBuffer<std::shared_ptr<ImgAnalyzeMsg>> input_ref_img_;
+    realtime_tools::RealtimeBuffer<std::shared_ptr<Velocity>> input_ref_vel_;
 
     rclcpp::Subscription<ImgAnalyzeMsg>::SharedPtr ref_subscriber_image_ = nullptr;
+    rclcpp::Subscription<Velocity>::SharedPtr ref_subscriber_velocity_ = nullptr;
     rclcpp::Duration ref_timeout_ = rclcpp::Duration::from_seconds(0.0);  // 0ms
 
     using ControllerStatePublisherOdom = realtime_tools::RealtimePublisher<ControllerStateMsgOdom>;
@@ -127,7 +131,10 @@
 
   private:
     ROBOT_STEERING_CONTROLLER__VISIBILITY_LOCAL void reference_callback(
-      const std::shared_ptr<ImgAnalyzeMsg> msg);
+      const std::shared_ptr<ImgAnalyzeMsg> msg);    
+    
+    ROBOT_STEERING_CONTROLLER__VISIBILITY_LOCAL void reference_velocity(
+      const std::shared_ptr<Velocity> msg);
   };
 
   

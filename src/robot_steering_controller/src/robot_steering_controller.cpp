@@ -28,9 +28,11 @@ namespace utility
 {
 using ImgAnalyzeMsg =
   robot_steering_controller::RobotSteeringController::ImgAnalyzeMsg;
+using Velocity =
+  robot_steering_controller::RobotSteeringController::Velocity;
 
 // called from RT control loop
-void reset_controller_reference_msg(
+void reset_controller_reference_image_msg(
   const std::shared_ptr<ImgAnalyzeMsg> & msg,
   const std::shared_ptr<rclcpp_lifecycle::LifecycleNode> & node)
 {
@@ -40,8 +42,17 @@ void reset_controller_reference_msg(
     msg->object[i].distance = std::numeric_limits<double>::quiet_NaN();
     msg->object[i].confidence = std::numeric_limits<double>::quiet_NaN();
   }
-  msg->velocity = 0;
+  msg->header.stamp = node->now();
 }
+
+void reset_controller_reference_velocity_msg(
+  const std::shared_ptr<Velocity> & msg,
+  const std::shared_ptr<rclcpp_lifecycle::LifecycleNode> & node)
+{
+  msg->velocity = std::numeric_limits<double>::quiet_NaN();
+  msg->header.stamp = node->now();
+}
+
 
 }  // namespace
 
@@ -131,13 +142,22 @@ controller_interface::CallbackReturn RobotSteeringController::on_configure(
     ref_subscriber_image_ = get_node()->create_subscription<ImgAnalyzeMsg>(
       "~/reference", subscribers_qos,
       std::bind(&RobotSteeringController::reference_callback, this, std::placeholders::_1));
+
+    ref_subscriber_velocity_ = get_node()->create_subscription<Velocity>(
+      "~/reference_velocity", subscribers_qos,
+      std::bind(&RobotSteeringController::reference_velocity, this, std::placeholders::_1));
   }
 
 
-  std::shared_ptr<ImgAnalyzeMsg> msg =
+  std::shared_ptr<ImgAnalyzeMsg> msg_img =
     std::make_shared<ImgAnalyzeMsg>();
-  utility::reset_controller_reference_msg(msg, get_node());
-  input_ref_.writeFromNonRT(msg);
+  utility::reset_controller_reference_image_msg(msg_img, get_node());
+  input_ref_img_.writeFromNonRT(msg_img);
+
+  std::shared_ptr<Velocity> msg_vel =
+    std::make_shared<Velocity>();
+  utility::reset_controller_reference_velocity_msg(msg_vel, get_node());
+  input_ref_vel_.writeFromNonRT(msg_vel);
 
   try
   {
@@ -236,9 +256,30 @@ void RobotSteeringController::reference_callback(
 
   if (ref_timeout_ == rclcpp::Duration::from_seconds(0) || age_of_last_command <= ref_timeout_)
   {
-    input_ref_.writeFromNonRT(msg);
+    input_ref_img_.writeFromNonRT(msg);
   }
 
+}
+
+void RobotSteeringController::reference_velocity(
+  const std::shared_ptr<Velocity> msg)
+{
+  // if no timestamp provided use current time for command timestamp
+  if (msg->header.stamp.sec == 0 && msg->header.stamp.nanosec == 0u)
+  {
+    RCLCPP_WARN(
+      get_node()->get_logger(),
+      "Timestamp in header is missing, using current time as command timestamp.");
+      msg->header.stamp = get_node()->now();
+  }
+
+  //const auto age_of_last_command = get_node()->now() - msg->header.stamp;
+  const auto age_of_last_command = rclcpp::Duration::from_seconds(0.5);
+
+  if (ref_timeout_ == rclcpp::Duration::from_seconds(0) || age_of_last_command <= ref_timeout_)
+  {
+    input_ref_vel_.writeFromNonRT(msg);
+  }
 }
 
 bool RobotSteeringController::update_odometry(const rclcpp::Duration & period)
@@ -429,7 +470,8 @@ controller_interface::CallbackReturn RobotSteeringController::on_activate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
   // Set default value in command
-  utility:: reset_controller_reference_msg(*(input_ref_.readFromRT()), get_node());
+  utility::reset_controller_reference_image_msg(*(input_ref_img_.readFromRT()), get_node());
+  utility::reset_controller_reference_velocity_msg(*((input_ref_vel_.readFromRT())), get_node());
 
   return controller_interface::CallbackReturn::SUCCESS;
 }
@@ -457,7 +499,7 @@ controller_interface::return_type RobotSteeringController::update_and_write_comm
 {
   if (!is_in_chained_mode())
   {
-    auto current_ref = *(input_ref_.readFromRT());
+    auto current_ref = *(input_ref_vel_.readFromRT());
     if (!std::isnan(current_ref->velocity) && !std::isnan(current_ref->velocity))
     {
       reference_interfaces_[0] = current_ref->velocity;
@@ -479,7 +521,7 @@ controller_interface::return_type RobotSteeringController::update_and_write_comm
   if (!std::isnan(reference_interfaces_[0]) && !std::isnan(reference_interfaces_[1]))
   {
     
-    const auto age_of_last_command = time - (*(input_ref_.readFromRT()))->header.stamp;
+    const auto age_of_last_command = time - (*(input_ref_vel_.readFromRT()))->header.stamp;
     const auto timeout =
     age_of_last_command > ref_timeout_ && ref_timeout_ != rclcpp::Duration::from_seconds(0);
 

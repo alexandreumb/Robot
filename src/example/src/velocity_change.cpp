@@ -2,7 +2,7 @@
 #include <csignal>
 #include <thread>
 #include <rclcpp/rclcpp.hpp>
-#include "msgs/msg/img_analyze_msg.hpp"
+#include "msgs/msg/velocity.hpp"
 
 std::atomic<bool> running{true};
 std::atomic<int> velocity{0};
@@ -18,15 +18,11 @@ int main(int argc, char ** argv)
     auto node = rclcpp::Node::make_shared("velocity_publisher_node");
 
     auto qos = rclcpp::QoS(1).best_effort().durability_volatile();
-    auto publisher = node->create_publisher<msgs::msg::ImgAnalyzeMsg>(
-        "robot_steering_controller/reference", qos);
+    auto publisher = node->create_publisher<msgs::msg::Velocity>(
+        "robot_steering_controller/reference_velocity", qos);
 
-    msgs::msg::ImgAnalyzeMsg msg;
-    msg.object.resize(1);
-    msg.object[0].name = "person";
-    msg.object[0].distance = 0;
-    msg.object[0].confidence = 0.9;
-    msg.header.frame_id = "camera_frame";
+    msgs::msg::Velocity msg;
+    msg.header.frame_id = "base_link";
 
     std::thread pub_thread([&]() {
         while (running) {
