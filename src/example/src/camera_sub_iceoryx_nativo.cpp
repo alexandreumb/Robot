@@ -6,6 +6,13 @@
 #include "iceoryx_posh/popo/untyped_subscriber.hpp"
 #include "iceoryx_posh/runtime/posh_runtime.hpp"
 
+#define GPU 0
+#if GPU
+    #include "Yolo_Tensorrt/yolov8.h"
+#else
+    #include <onnxruntime_cxx_api.h>
+#endif
+
 #include <atomic>
 #include <csignal>
 #include <cstdint>
@@ -54,9 +61,17 @@ std::atomic<bool> stop{false};
 static double   total_full_us     = 0.0;
 static double   total_transport_us = 0.0;
 
-void signal_handler(int) { stop = true; }
+// ── struct ──────────────────────────────────────────────────────
+struct Detection
+{
+    cv::Rect box;
+    int class_id;
+    float confidence;
+};
 
 // ── helpers ───────────────────────────────────────────────────────────────────
+void signal_handler(int) { stop = true; }
+
 inline int64_t monotonic_now_ns()
 {
     struct timespec ts;
@@ -127,12 +142,54 @@ void configure_thread()
 }
 
 // ── placeholder pipeline ──────────────────────────────────────────────────────
-void process_image(const cv::Mat & img) { (void)img; }
+#if GPU
+void process_image(YoloV8& detector, const cv::Mat& img)
+{
+    auto objects = detector.detectObjects(img);
+    std::this_thread::sleep_for(std::chrono::milliseconds(10)); // Simulate 10 ms processing time
+}
+
+#else
+void process_image(Ort::Session& detector, const cv::Mat& img)
+{
+    //run_onnx_inference(detector, img); // You would implement this function to run inference
+    (void)detector;
+    (void)img;
+    std::this_thread::sleep_for(std::chrono::milliseconds(10)); // Simulate 10 ms processing time
+}
+#endif
 
 int main(int argc, char ** argv)
 {
     std::signal(SIGINT,  signal_handler);
     std::signal(SIGTERM, signal_handler);
+
+    const std::string onnxModelPath = "/home/alexandre/iceoryx_demo_ws/src/example/Yolo_Tensorrt/r4f_pc_yolov8m_seg.onnx";
+
+#if GPU
+    YoloV8Config config;
+    YoloV8 detector(onnxModelPath, config);
+
+#else
+    Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "yolo");
+    Ort::Session* detector = nullptr;
+
+#endif
+
+#if !GPU
+    Ort::SessionOptions session_options;
+    session_options.SetIntraOpNumThreads(1);
+    session_options.SetGraphOptimizationLevel(
+        GraphOptimizationLevel::ORT_ENABLE_ALL);
+
+    Ort::Session session(
+        env,
+        onnxModelPath.c_str(),
+        session_options);
+
+detector = &session;
+
+#endif
 
     // ── ROS2 init — still needed for logging and result publishing ────────────
     rclcpp::init(argc, argv);
@@ -241,7 +298,7 @@ int main(int argc, char ** argv)
             );
 
             // ── Step 5: process ───────────────────────────────────────────────
-            process_image(img);
+            process_image(*detector, img);
 
             // ── Step 6: release chun  k back to iceoryx pool ────────────────────
             // Must be called — otherwise the pool exhausts and publisher stalls.

@@ -27,6 +27,8 @@ find_package(msgs REQUIRED)
 include_directories(
   include
   ${OpenCV_INCLUDE_DIRS}
+  /home/alexandre/onnxruntime-linux-x64-1.18.1/include
+
 )
 
 install(
@@ -68,7 +70,10 @@ install(PROGRAMS
 
 add_executable(camera_sub_iceoryx_nativo src/camera_sub_iceoryx_nativo.cpp)
 ament_target_dependencies(camera_sub_iceoryx_nativo rclcpp OpenCV fixed_size_msgs)
-target_link_libraries(camera_sub_iceoryx_nativo iceoryx_hoofs::iceoryx_hoofs iceoryx_posh::iceoryx_posh)
+target_link_libraries(camera_sub_iceoryx_nativo iceoryx_hoofs::iceoryx_hoofs iceoryx_posh::iceoryx_posh)  # Link the YoloTensorrt library
+target_link_libraries(camera_sub_iceoryx_nativo
+    /home/alexandre/onnxruntime-linux-x64-1.18.1/lib/libonnxruntime.so
+)
 # add to CMakeLists.txt temporarily
 # target_compile_options(camera1_sub_iceoryx_nativo PRIVATE -fsanitize=address)
 # target_link_options(camera1_sub_iceoryx_nativo PRIVATE -fsanitize=address)
