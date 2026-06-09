@@ -22,12 +22,13 @@ find_package(iceoryx_posh REQUIRED)
 find_package(iceoryx_hoofs REQUIRED)
 find_package(realsense2 REQUIRED)
 find_package(msgs REQUIRED)
+find_package(CUDAToolkit REQUIRED)
+find_package(nlohmann_json REQUIRED)
 
 # Include directories
 include_directories(
   include
   ${OpenCV_INCLUDE_DIRS}
-  /home/alexandre/onnxruntime-linux-x64-1.18.1/include
 
 )
 
@@ -70,9 +71,10 @@ install(PROGRAMS
 
 add_executable(camera_sub_iceoryx_nativo src/camera_sub_iceoryx_nativo.cpp)
 ament_target_dependencies(camera_sub_iceoryx_nativo rclcpp OpenCV fixed_size_msgs)
-target_link_libraries(camera_sub_iceoryx_nativo iceoryx_hoofs::iceoryx_hoofs iceoryx_posh::iceoryx_posh)  # Link the YoloTensorrt library
-target_link_libraries(camera_sub_iceoryx_nativo
-    /home/alexandre/onnxruntime-linux-x64-1.18.1/lib/libonnxruntime.so
+target_link_libraries(camera_sub_iceoryx_nativo iceoryx_hoofs::iceoryx_hoofs iceoryx_posh::iceoryx_posh CUDA::cudart Yolo_Tensorrt)  # Link the YoloTensorrt library
+target_include_directories(camera_sub_iceoryx_nativo PRIVATE
+    /home/robotics4farmers/Dev/Robot/src/example
+    /usr/local/cuda-12.6/targets/aarch64-linux/include
 )
 # add to CMakeLists.txt temporarily
 # target_compile_options(camera1_sub_iceoryx_nativo PRIVATE -fsanitize=address)
@@ -163,6 +165,8 @@ install(TARGETS example
   RUNTIME DESTINATION bin
 )
 
+add_subdirectory(Yolo_Tensorrt)
+add_subdirectory(Shared_Memory_Sensors)
 # ----------------------------
 # Testing / linting
 # ----------------------------

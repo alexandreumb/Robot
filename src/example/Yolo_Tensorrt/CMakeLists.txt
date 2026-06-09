@@ -11,14 +11,16 @@ target_include_directories(Yolo_Tensorrt PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CUDA_INCLUDE_DIRS} 
     # ${TensorRT_INCLUDE_DIRS}
+    /home/robotics4farmers/Dev/Robot/src/example/Shared_Memory_Sensors  
     )
 
 # Link necessary libraries
-target_link_libraries(Yolo_Tensorrt PUBLIC 
-    ${OpenCV_LIBS} 
-    SharedMemorySensors
-    /usr/lib/x86_64-linux-gnu/libnvonnxparser.so
-    )
+target_link_libraries(Yolo_Tensorrt PUBLIC
+    ${OpenCV_LIBS}
+    nvinfer
+    nvonnxparser
+    cudart
+)
 
 # Define the export_to_engine executable
 add_executable(export_to_engine 

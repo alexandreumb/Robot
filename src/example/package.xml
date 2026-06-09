@@ -20,6 +20,8 @@
   <depend>pluginlib</depend>
   <depend>gnss_compass_utils</depend>
   <depend>msgs</depend>
+  <depend>CUDAToolkit</depend>
+  <depend>nlohmann_json</depend>
   
   <exec_depend>ackermann_steering_controller</exec_depend>
   <exec_depend>robot_steering_controller</exec_depend>

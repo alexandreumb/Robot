@@ -6,11 +6,11 @@
 #include "iceoryx_posh/popo/untyped_subscriber.hpp"
 #include "iceoryx_posh/runtime/posh_runtime.hpp"
 
-#define GPU 0
+#define GPU 1
 #if GPU
     #include "Yolo_Tensorrt/yolov8.h"
 #else
-    #include <onnxruntime_cxx_api.h>
+//#include <onnxruntime_cxx_api.h>
 #endif
 
 #include <atomic>
@@ -145,8 +145,13 @@ void configure_thread()
 #if GPU
 void process_image(YoloV8& detector, const cv::Mat& img)
 {
+    int i = 0;
     auto objects = detector.detectObjects(img);
-    std::this_thread::sleep_for(std::chrono::milliseconds(10)); // Simulate 10 ms processing time
+    for (Object &object :objects)
+    {
+        std::cout << i << std::endl;
+        i++; 
+    }
 }
 
 #else
@@ -164,7 +169,7 @@ int main(int argc, char ** argv)
     std::signal(SIGINT,  signal_handler);
     std::signal(SIGTERM, signal_handler);
 
-    const std::string onnxModelPath = "/home/alexandre/iceoryx_demo_ws/src/example/Yolo_Tensorrt/r4f_pc_yolov8m_seg.onnx";
+    const std::string onnxModelPath = "/home/robotics4farmers/Dev/Robot/src/example/Yolo_Tensorrt/r4f_pc_yolov8m_seg.onnx";
 
 #if GPU
     YoloV8Config config;
@@ -298,7 +303,13 @@ detector = &session;
             );
 
             // ── Step 5: process ───────────────────────────────────────────────
+#if GPU
+        RCLCPP_INFO(node->get_logger(),
+            "process");
+            process_image(detector, img);
+#else
             process_image(*detector, img);
+#endif
 
             // ── Step 6: release chun  k back to iceoryx pool ────────────────────
             // Must be called — otherwise the pool exhausts and publisher stalls.
