@@ -36,7 +36,7 @@ using Image8Mb = fixed_size_msgs::msg::Image8Mb;
 // topic_name = /camera
 // event      = "data"            (always for ROS2)
 static constexpr char IOX_SERVICE[]  = "fixed_size_msgs/msg/Image8Mb";
-static constexpr char IOX_INSTANCE[] = "/camera";
+static constexpr char IOX_INSTANCE[] = "/camera_2";
 static constexpr char IOX_EVENT[]    = "data";
 static const std::string OUTPUT_DIR = std::string(getenv("HOME")) + "/latency_data";
 
@@ -50,9 +50,9 @@ static const std::string OUTPUT_DIR = std::string(getenv("HOME")) + "/latency_da
 constexpr int      SUBSCRIBER_CORE = 3;
 constexpr int      RT_PRIORITY     = 80;
 #if REALSENSE
-constexpr int      IMG_TYPE    = CV_16UC1;         
-#else
 constexpr int      IMG_TYPE    = CV_8UC3;         // bgr8, 3 bytes per pixel
+#else
+constexpr int      IMG_TYPE    = CV_16UC1;         
 #endif
 
 // ── globals ───────────────────────────────────────────────────────────────────
@@ -145,13 +145,16 @@ void configure_thread()
 #if GPU
 void process_image(YoloV8& detector, const cv::Mat& img)
 {
-    int i = 0;
-    auto objects = detector.detectObjects(img);
-    for (Object &object :objects)
+
+    auto objects = detector.detectObjects(resized_img);
+    if (objects.size() > 1)
     {
-        std::cout << i << std::endl;
-        i++; 
+        for (Object &object :objects) 
+        {
+            std::cout << "Label of the object: " << object.label << std::endl;
+        }
     }
+
 }
 
 #else
@@ -169,11 +172,15 @@ int main(int argc, char ** argv)
     std::signal(SIGINT,  signal_handler);
     std::signal(SIGTERM, signal_handler);
 
+#if defined(__aarch64__) || defined(_M_ARM64)
+    const std::string engine_file_path = "/home/robotics4farmers/Dev/Robot/src/example/Yolo_Tensorrt/r4f_jetson_yolov8m_seg.onnx";
+#elif defined(__x86_64__) || defined(_M_X64)
     const std::string onnxModelPath = "/home/robotics4farmers/Dev/Robot/src/example/Yolo_Tensorrt/r4f_pc_yolov8m_seg.onnx";
+#endif
 
 #if GPU
     YoloV8Config config;
-    YoloV8 detector(onnxModelPath, config);
+    YoloV8 detector(engine_file_path, config);
 
 #else
     Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "yolo");
@@ -201,6 +208,8 @@ detector = &session;
     auto node = std::make_shared<rclcpp::Node>("camera_subscriber_node");
 
     configure_thread();
+    
+    std::cout << "After init " << std::endl;
 
     // ── native iceoryx runtime init ───────────────────────────────────────────
     // Must be called once per process. The runtime name must be unique.
@@ -304,8 +313,6 @@ detector = &session;
 
             // ── Step 5: process ───────────────────────────────────────────────
 #if GPU
-        RCLCPP_INFO(node->get_logger(),
-            "process");
             process_image(detector, img);
 #else
             process_image(*detector, img);
