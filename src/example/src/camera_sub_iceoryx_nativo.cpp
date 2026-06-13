@@ -6,11 +6,11 @@
 #include "iceoryx_posh/popo/untyped_subscriber.hpp"
 #include "iceoryx_posh/runtime/posh_runtime.hpp"
 
-#define GPU 1
+#define GPU 0
 #if GPU
     #include "Yolo_Tensorrt/yolov8.h"
 #else
-//#include <onnxruntime_cxx_api.h>
+    //#include <onnxruntime_cxx_api.h>
 #endif
 
 #include <atomic>
@@ -36,7 +36,7 @@ using Image8Mb = fixed_size_msgs::msg::Image8Mb;
 // topic_name = /camera
 // event      = "data"            (always for ROS2)
 static constexpr char IOX_SERVICE[]  = "fixed_size_msgs/msg/Image8Mb";
-static constexpr char IOX_INSTANCE[] = "/camera_2";
+static constexpr char IOX_INSTANCE[] = "/camera";
 static constexpr char IOX_EVENT[]    = "data";
 static const std::string OUTPUT_DIR = std::string(getenv("HOME")) + "/latency_data";
 
@@ -49,11 +49,8 @@ static const std::string OUTPUT_DIR = std::string(getenv("HOME")) + "/latency_da
 
 constexpr int      SUBSCRIBER_CORE = 3;
 constexpr int      RT_PRIORITY     = 80;
-#if REALSENSE
-constexpr int      IMG_TYPE    = CV_8UC3;         // bgr8, 3 bytes per pixel
-#else
-constexpr int      IMG_TYPE    = CV_16UC1;         
-#endif
+constexpr int      IMG_TYPE_COLOR    = CV_8UC3;         // bgr8, 3 bytes per pixel
+constexpr int      IMG_TYPE_DEPTH    = CV_16UC1;         
 
 // ── globals ───────────────────────────────────────────────────────────────────
 std::atomic<bool> stop{false};
@@ -143,10 +140,10 @@ void configure_thread()
 
 // ── placeholder pipeline ──────────────────────────────────────────────────────
 #if GPU
-void process_image(YoloV8& detector, const cv::Mat& img)
+void process_image(YoloV8& detector, const cv::Mat& img_color, const cv::Mat& img_depth, image_intrinsics img_intrinsics)
 {
-
-    auto objects = detector.detectObjects(resized_img);
+    auto max_detected = 0.2f;
+    auto objects = detector.detectObjects(img_color);
     if (objects.size() > 1)
     {
         for (Object &object :objects) 
@@ -155,10 +152,12 @@ void process_image(YoloV8& detector, const cv::Mat& img)
         }
     }
 
+    auto ret = detector.extractObjects(objects, img_depth, img_intrinsics, max_detected);
+
 }
 
 #else
-void process_image(Ort::Session& detector, const cv::Mat& img)
+void process_image(Ort::Session& detector, const cv::Mat& img   )
 {
     //run_onnx_inference(detector, img); // You would implement this function to run inference
     (void)detector;
@@ -304,18 +303,27 @@ detector = &session;
             // ── Step 4: construct Mat header over shared memory ───────────────
             // NO memcpy — Mat points directly at iceoryx chunk.
             // process_image() must complete before release() is called below.
-            cv::Mat img(
-                static_cast<int>(msg->height),
-                static_cast<int>(msg->width),
-                IMG_TYPE,
-                const_cast<uint8_t *>(msg->data.data())
+            cv::Mat img_color(
+                static_cast<int>(msg->image_intrinsics.height),
+                static_cast<int>(msg->image_intrinsics.width),
+                IMG_TYPE_COLOR,
+                const_cast<uint8_t *>(msg->data_color.data())
             );
+
+            cv::Mat img_depth(
+                static_cast<int>(msg->image_intrinsics.height),
+                static_cast<int>(msg->image_intrinsics.width),
+                IMG_TYPE_DEPTH,
+                const_cast<uint8_t *>(msg->data_depth.data())
+            );
+
+            image_intrinsics img_intrinsics = msg.image_intrinsics;
 
             // ── Step 5: process ───────────────────────────────────────────────
 #if GPU
-            process_image(detector, img);
+            process_image(detector, img_color, img_depth, img_intrinsics);
 #else
-            process_image(*detector, img);
+            process_image(*detector, img_color);
 #endif
 
             // ── Step 6: release chun  k back to iceoryx pool ────────────────────

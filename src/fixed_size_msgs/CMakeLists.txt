@@ -27,6 +27,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Image720p.msg"
   "msg/ImageVGA.msg"
   "msg/Image8Mb.msg"
+  "msg/ImageIntrinsics.msg"
   DEPENDENCIES builtin_interfaces
   ADD_LINTER_TESTS
 )

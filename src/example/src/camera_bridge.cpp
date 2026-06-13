@@ -18,7 +18,7 @@ using Image8Mb = fixed_size_msgs::msg::Image8Mb;
 
 // ── service description — derived from rmw_iceoryx name conversion ────────────
 static constexpr char IOX_SERVICE[]  = "fixed_size_msgs/msg/Image8Mb";
-static constexpr char IOX_INSTANCE[] = "/camera_2";
+static constexpr char IOX_INSTANCE[] = "/camera";
 static constexpr char IOX_EVENT[]    = "data";
 
 // ── options ───────────────────────────────────────────────────────────────────
@@ -150,16 +150,16 @@ int main(int argc, char ** argv)
             ros_img->header.stamp.sec = static_cast<int32_t>(time_ns / 1'000'000'000LL);
             ros_img->header.stamp.nanosec = static_cast<int32_t>(time_ns % 1'000'000'000LL);
             ros_img->header.frame_id = "camera_link";
-            ros_img->height = src->height;
-            ros_img->width = src->width;
+            ros_img->height = src->image_intrinsics.height;
+            ros_img->width = src->image_intrinsics.width;
             ros_img->encoding = "16UC1";
             ros_img->is_bigendian = src->is_bigendian;
-            ros_img->step = src->step;
+            ros_img->step = src->step_depth;
 
             // only copy the valid image data — not the full 12MB buffer
-            const size_t data_size = src->height * src->step;
+            const size_t data_size = src->image_intrinsics.height * src->step_depth;
             ros_img->data.resize(data_size);
-            std::memcpy(ros_img->data.data(), src->data.data(), data_size);
+            std::memcpy(ros_img->data.data(), src->data_depth.data(), data_size);
 
             pub->publish(std::move(ros_img));
 

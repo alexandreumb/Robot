@@ -60,17 +60,18 @@ int main(int argc, char ** argv)
         .durability_volatile();
 
 #if REALSENSE
-    auto pub_color = node->create_publisher<Image8Mb>("camera", qos);
-    auto pub_depth = node->create_publisher<Image8Mb>("camera_2", qos);
-
+    auto pub = node->create_publisher<Image8Mb>("camera", qos);
 
     rs2::pipeline p;
     rs2::config cfg;
     //The depth is meters is equal to depth scale * pixel value.
     cfg.enable_stream(RS2_STREAM_DEPTH, 1280, 720, RS2_FORMAT_Z16, 30);
     cfg.enable_stream(RS2_STREAM_COLOR, 1280, 720, RS2_FORMAT_BGR8, 30);
-    p.start(cfg);
-    
+    rs2::pipeline_profile profile = p.start(cfg);
+
+    auto color_profile = profile.get_stream(RS2_STREAM_COLOR);
+    rs2_intrinsics color_intrinsics = color_profile.as<rs2::video_stream_profile>().get_intrinsics();
+
     // get depth scale for metadata
     rs2::depth_sensor depth_sensor = p.get_active_profile()
         .get_device()
@@ -123,31 +124,28 @@ int main(int argc, char ** argv)
     {
         
 #if REALSENSE
-        // ── Step 1: borrow a loaned chunk from iceoryx ────────────────────────
-        auto loaned_msg_depth = pub_depth->borrow_loaned_message();
-        auto loaned_msg_color = pub_color->borrow_loaned_message();
-        auto & msg_depth      = loaned_msg_depth.get();
-        auto & msg_color      = loaned_msg_color.get();
-
         rs2::frameset frames   = p.wait_for_frames();
         rs2::depth_frame depth = frames.get_depth_frame();
         rs2::video_frame color = frames.get_color_frame();
+
+        // ── Step 1: borrow a loaned chunk from iceoryx ────────────────────────
+        auto loaned_msg = pub->borrow_loaned_message();
+        auto & msg      = loaned_msg.get();
 
         cv::Mat depth_frame(
             IMG_HEIGHT,
             IMG_WIDTH,
             IMG_TYPE_DEPTH,
-            msg_depth.data.data()
+            msg.data_depth.data()
         );
 
         cv::Mat color_frame(
             IMG_HEIGHT,
             IMG_WIDTH,
             IMG_TYPE_COLOR,
-            msg_color.data.data()
+            msg.data_color.data()
         );
 
-        
         const int64_t capture_ns = monotonic_now_ns();
         
         RCLCPP_INFO(node->get_logger(), "data size : %lu", color.get_data_size());
@@ -155,27 +153,24 @@ int main(int argc, char ** argv)
         memcpy(depth_frame.data, depth.get_data(), depth.get_height() * depth.get_stride_in_bytes());
         memcpy(color_frame.data, color.get_data(), color.get_height() * color.get_stride_in_bytes());
 
-        msg_depth.timestamp    = capture_ns;
-        msg_depth.width        = IMG_WIDTH;
-        msg_depth.height       = IMG_HEIGHT;
-        msg_depth.step         = static_cast<uint32_t>(step_depth);
-        msg_depth.is_bigendian = false;
-        msg_depth.frequency    = CAM_FREQ_HZ;
-
-        msg_color.timestamp    = capture_ns;
-        msg_color.width        = IMG_WIDTH;
-        msg_color.height       = IMG_HEIGHT;
-        msg_color.step         = static_cast<uint32_t>(step_color);
-        msg_color.is_bigendian = false;
-        msg_color.frequency    = CAM_FREQ_HZ;
+        msg.image_intrinsics.width = IMG_WIDTH;
+        msg.image_intrinsics.height = IMG_HEIGHT;
+        msg.image_intrinsics.fx = color_intrinsics.fx;
+        msg.image_intrinsics.fy = color_intrinsics.fy;
+        msg.image_intrinsics.ppx = color_intrinsics.ppx;
+        msg.image_intrinsics.ppy = color_intrinsics.ppy;
+        msg.image_intrinsics.depth_units = depth_scale;
+        msg.timestamp    = capture_ns;
+        msg.step_depth   = static_cast<uint32_t>(step_depth);
+        msg.step_color   = static_cast<uint32_t>(step_color);
+        msg.is_bigendian = false;
+        msg.frequency    = CAM_FREQ_HZ;
 
         const int64_t time_ns = monotonic_now_ns();   
 
-        msg_depth.publish_timestamp = time_ns;
-        msg_color.publish_timestamp = time_ns;
+        msg.publish_timestamp = time_ns;
 
-        pub_depth->publish(std::move(loaned_msg_depth));
-        pub_color->publish(std::move(loaned_msg_color));
+        pub->publish(std::move(loaned_msg));
 
 #else
         // ── Step 2: construct a cv::Mat header over iceoryx shared memory ─────
