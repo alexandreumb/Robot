@@ -292,6 +292,12 @@ bool RobotSteeringController::update_odometry(const rclcpp::Duration & period)
     state_interfaces_[POS_Y].get_value();
   const double position_z =
     state_interfaces_[POS_Z].get_value();
+  const double next_position_x =
+    state_interfaces_[NEXT_POS_X].get_value();
+  const double next_position_y =
+    state_interfaces_[NEXT_POS_Y].get_value();
+  const double next_position_z =
+    state_interfaces_[NEXT_POS_Z].get_value();
   const double velocity_north =
     state_interfaces_[VEL_NORTH].get_value();
   const double velocity_east =
@@ -305,7 +311,7 @@ bool RobotSteeringController::update_odometry(const rclcpp::Duration & period)
 
   odometry_.update_from_position(
     heading, position_x, position_y, position_z,
-    position_x + velocity_east * period.seconds(), position_y + velocity_north * period.seconds(), position_z, period.seconds());
+    next_position_x, next_position_y, next_position_z, period.seconds());
 
   return true;
 }
@@ -411,17 +417,23 @@ RobotSteeringController::state_interface_configuration() const
   for (size_t i = 0; i < gps_sensor_names_.size(); i++)
   {
     state_interfaces_config.names.push_back(
-      gps_sensor_names_[i] + "/height");
+      gps_sensor_names_[i] + "/longitude");
     state_interfaces_config.names.push_back(
       gps_sensor_names_[i] + "/latitude");
     state_interfaces_config.names.push_back(
-      gps_sensor_names_[i] + "/longitude");
+      gps_sensor_names_[i] + "/height");
     state_interfaces_config.names.push_back(
       gps_sensor_names_[i] + "/velocity_north");
     state_interfaces_config.names.push_back(
       gps_sensor_names_[i] + "/velocity_east");
     state_interfaces_config.names.push_back(
       gps_sensor_names_[i] + "/heading");
+    state_interfaces_config.names.push_back(
+      gps_sensor_names_[i] + "/next_point_north");
+    state_interfaces_config.names.push_back(
+      gps_sensor_names_[i] + "/next_point_east");
+    state_interfaces_config.names.push_back(
+      gps_sensor_names_[i] + "/next_point_down");  
   }
 
   return state_interfaces_config;
@@ -504,8 +516,11 @@ controller_interface::return_type RobotSteeringController::update_and_write_comm
     {
       reference_interfaces_[0] = current_ref->velocity;
       reference_interfaces_[1] = current_ref->velocity;
-      if (id % 100 == 0) {
+      if (id % 1000 == 0) {
         RCLCPP_INFO(get_node()->get_logger(), "Received new reference velocity: %f", current_ref->velocity);
+        RCLCPP_INFO(get_node()->get_logger(), "Received new point x: %f", state_interfaces_[NEXT_POS_X].get_value());
+        RCLCPP_INFO(get_node()->get_logger(), "Received new point y: %f", state_interfaces_[NEXT_POS_Y].get_value());
+        RCLCPP_INFO(get_node()->get_logger(), "Received new point z: %f", state_interfaces_[NEXT_POS_Z].get_value());
       }
     }
   }

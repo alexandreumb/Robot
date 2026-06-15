@@ -1,1 +1,0 @@
-/home/alexandre/iceoryx_demo_ws/src/robot2/build/robot2/ament_cmake_environment_hooks/local_setup.zsh

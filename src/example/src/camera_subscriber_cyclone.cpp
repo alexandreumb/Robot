@@ -70,10 +70,10 @@ void handle_message(
 
     // zero-copy Mat header over received buffer — no memcpy
     cv::Mat img(
-        static_cast<int>(msg.height),
-        static_cast<int>(msg.width),
+        static_cast<int>(msg.image_intrinsics.height),
+        static_cast<int>(msg.image_intrinsics.width),
         IMG_TYPE,
-        const_cast<uint8_t *>(msg.data.data())
+        const_cast<uint8_t *>(msg.data_depth.data())
     );
 
     process_image(img);

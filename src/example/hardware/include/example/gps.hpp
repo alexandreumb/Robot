@@ -58,6 +58,10 @@ namespace example
         double accelerometer_x{0.0};
         double accelerometer_y{0.0};
         double accelerometer_z{0.0};
+
+        double next_point_north{2.0};
+        double next_point_east{3.0};
+        double next_point_down{4.0};
     };
 
     // ------------------------------------------------------------

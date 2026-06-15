@@ -70,7 +70,7 @@ int main(int argc, char ** argv)
     // ── validate buffer size ──────────────────────────────────────────────────
     if (pub->can_loan_messages()) {
         auto probe = pub->borrow_loaned_message();
-        constexpr size_t buf_size = sizeof(probe.get().data);
+        constexpr size_t buf_size = sizeof(probe.get().data_color);
         if (frame_size > buf_size) {
             RCLCPP_ERROR(node->get_logger(),
                 "Frame size %zu exceeds message buffer %zu.", frame_size, buf_size);
@@ -88,7 +88,7 @@ int main(int argc, char ** argv)
             auto loaned_msg = pub->borrow_loaned_message();
             auto & msg      = loaned_msg.get();
 
-            cv::Mat frame(IMG_HEIGHT, IMG_WIDTH, IMG_TYPE, msg.data.data());
+            cv::Mat frame(IMG_HEIGHT, IMG_WIDTH, IMG_TYPE, msg.data_color.data());
 
             if (!cap.read(frame)) {
                 RCLCPP_WARN(node->get_logger(), "Blank frame — skipping");
@@ -100,9 +100,9 @@ int main(int argc, char ** argv)
 #else
             msg.timestamp = node->now().nanoseconds();
 #endif
-            msg.width        = IMG_WIDTH;
-            msg.height       = IMG_HEIGHT;
-            msg.step         = static_cast<uint32_t>(step);
+            msg.image_intrinsics.width        = IMG_WIDTH;
+            msg.image_intrinsics.height       = IMG_HEIGHT;
+            msg.step_color         = static_cast<uint32_t>(step);
             msg.is_bigendian = false;
             msg.frequency    = CAM_FREQ_HZ;
 
@@ -117,7 +117,7 @@ int main(int argc, char ** argv)
         {
             auto msg_ptr = std::make_unique<Image8Mb>();
             Image8Mb & msg = *msg_ptr;
-            cv::Mat frame(IMG_HEIGHT, IMG_WIDTH, IMG_TYPE, msg.data.data());
+            cv::Mat frame(IMG_HEIGHT, IMG_WIDTH, IMG_TYPE, msg.data_color.data());
 
             if (!cap.read(frame)) {
                 RCLCPP_WARN(node->get_logger(), "Blank frame — skipping");
@@ -129,9 +129,9 @@ int main(int argc, char ** argv)
 #else
             msg.timestamp = node->now().nanoseconds();
 #endif
-            msg.width        = IMG_WIDTH;
-            msg.height       = IMG_HEIGHT;
-            msg.step         = static_cast<uint32_t>(step);
+            msg.image_intrinsics.width        = IMG_WIDTH;
+            msg.image_intrinsics.height       = IMG_HEIGHT;
+            msg.step_color         = static_cast<uint32_t>(step);
             msg.is_bigendian = false;
             msg.frequency    = CAM_FREQ_HZ;
 

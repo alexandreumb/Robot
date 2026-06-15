@@ -53,8 +53,7 @@ int main(int argc, char ** argv)
         .durability_volatile();
 
 #if REALSENSE
-    auto pub_color = node->create_publisher<Image8Mb>("camera/color/image_raw", qos);
-    auto pub_depth = node->create_publisher<Image8Mb>("camera/depth", qos);
+    auto pub = node->create_publisher<Image8Mb>("camera/color/image_raw", qos);
 
     rs2::pipeline p;
     rs2::config cfg;
@@ -86,8 +85,7 @@ int main(int argc, char ** argv)
 
 
 #if REALSENSE
-    auto msg_color = std::make_unique<Image8Mb>();
-    auto msg_depth = std::make_unique<Image8Mb>();
+    auto msg = std::make_unique<Image8Mb>();
 
     const size_t step_color = IMG_WIDTH * PIXEL_BYTES_COLOR;
     const size_t step_depth = IMG_WIDTH * PIXEL_BYTES_DEPTH;
@@ -96,14 +94,14 @@ int main(int argc, char ** argv)
         IMG_HEIGHT,
         IMG_WIDTH,
         IMG_TYPE_DEPTH,
-        msg_depth->data.data()
+        msg->data_depth.data()
     );
 
     cv::Mat color_frame(
         IMG_HEIGHT,
         IMG_WIDTH,
         IMG_TYPE_COLOR,
-        msg_color->data.data()
+        msg->data_color.data()
     );
 
 #else
@@ -115,7 +113,7 @@ int main(int argc, char ** argv)
             IMG_HEIGHT,
             IMG_WIDTH,
             IMG_TYPE,
-            msg->data.data()        // ← raw C array, no .data() needed
+            msg->data_color.data()        // ← raw C array, no .data() needed
         );
 #endif
 
@@ -136,19 +134,13 @@ int main(int argc, char ** argv)
         msg->timestamp = node->now().nanoseconds();
 #endif
 
-        msg_color->width        = IMG_WIDTH;
-        msg_color->height       = IMG_HEIGHT;
-        msg_color->step         = static_cast<uint32_t>(step_color);
-        msg_color->is_bigendian = false;
-        msg_color->frequency    = CAM_FREQ_HZ;
-        msg_color->timestamp    = time_ns;
-
-        msg_depth->width        = IMG_WIDTH;
-        msg_depth->height       = IMG_HEIGHT;
-        msg_depth->step         = static_cast<uint32_t>(step_depth);
-        msg_depth->is_bigendian = false;
-        msg_depth->frequency    = CAM_FREQ_HZ;
-        msg_depth->timestamp    = time_ns;
+        msg->imge_intrinsics.width        = IMG_WIDTH;
+        msg->imge_intrinsics.height       = IMG_HEIGHT;
+        msg->step_color   = static_cast<uint32_t>(step_color);
+        msg->step_depth   = static_cast<uint32_t>(step_depth);
+        msg->is_bigendian = false;
+        msg->frequency    = CAM_FREQ_HZ;
+        msg->timestamp    = time_ns;
         
 /*
 #if USE_CLOCK_MONOTONIC
@@ -158,8 +150,7 @@ int main(int argc, char ** argv)
 #endif
 */
 
-        pub_color->publish(*msg_color);
-        pub_depth->publish(*msg_depth);
+        pub->publish(*msg);
 
 #else
 
@@ -175,9 +166,9 @@ int main(int argc, char ** argv)
                 msg->timestamp = node->now().nanoseconds();
         #endif
         
-                msg->width        = IMG_WIDTH;
-                msg->height       = IMG_HEIGHT;
-                msg->step         = static_cast<uint32_t>(step);
+                msg->image_intrinsics.width        = IMG_WIDTH;
+                msg->image_intrinsics.height       = IMG_HEIGHT;
+                msg->step_color   = static_cast<uint32_t>(step);
                 msg->is_bigendian = false;
                 msg->frequency    = CAM_FREQ_HZ;
                 msg->timestamp    = time_ns;

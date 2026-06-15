@@ -405,6 +405,9 @@ GpsHardware::export_state_interfaces()
         state_interfaces.emplace_back(n, "accelerometer_x", &joint.state.accelerometer_x );
         state_interfaces.emplace_back(n, "accelerometer_y", &joint.state.accelerometer_y );
         state_interfaces.emplace_back(n, "accelerometer_z", &joint.state.accelerometer_z );
+        state_interfaces.emplace_back(n, "next_point_north", &joint.state.next_point_north );
+        state_interfaces.emplace_back(n, "next_point_east", &joint.state.next_point_east );
+        state_interfaces.emplace_back(n, "next_point_down", &joint.state.next_point_down );
     }
 
     return state_interfaces;
@@ -457,6 +460,12 @@ hardware_interface::return_type GpsHardware::read(
             RCLCPP_INFO(get_logger(), "No more waypoints found. Holding position at: north=%.2f east=%.2f down=%.2f", north, east, down);
         }
     }
+
+
+    joint.state.next_point_north = next_waipoint_[0];
+    joint.state.next_point_east = next_waipoint_[1];
+    joint.state.next_point_down = next_waipoint_[2];
+
 #endif
 
 #endif
@@ -464,11 +473,14 @@ hardware_interface::return_type GpsHardware::read(
     for (auto &joint : joints_) 
     {
         joint.state = copy;
+        joint.state.next_point_north = 1.0;
+        joint.state.next_point_east = 2.0;
+        joint.state.next_point_down = 3.0;
         if (i % 100 == 0)
         {
-            RCLCPP_INFO(get_logger(), "Writing command for %s: gnss_fix=%.2f", joint.joint_name.c_str(), joint.state.gnss_fix);
-            RCLCPP_INFO(get_logger(), "Writing command for %s: acc=%.2f", joint.joint_name.c_str(), joint.state.accelerometer_y);
-            RCLCPP_INFO(get_logger(), "Writing command for %s: rollx=%.2f", joint.joint_name.c_str(), joint.state.roll);
+//            RCLCPP_INFO(get_logger(), "Writing command for %s: gnss_fix=%.2f", joint.joint_name.c_str(), joint.state.gnss_fix);
+//            RCLCPP_INFO(get_logger(), "Writing command for %s: acc=%.2f", joint.joint_name.c_str(), joint.state.accelerometer_y);
+//            RCLCPP_INFO(get_logger(), "Writing command for %s: rollx=%.2f", joint.joint_name.c_str(), joint.state.roll);
         }
     }
 

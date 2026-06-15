@@ -1,1 +1,0 @@
-/home/alexandre/iceoryx_demo_ws/src/robot2/launch/robot2_launch.py

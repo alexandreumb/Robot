@@ -86,6 +86,9 @@
           <state_interface name="accelerometer_x"/>
           <state_interface name="accelerometer_y"/>
           <state_interface name="accelerometer_z"/>
+          <state_interface name="next_point_north"/>
+          <state_interface name="next_point_east"/>
+          <state_interface name="next_point_down"/>
         </sensor>
       </ros2_control>
     </xacro:unless>

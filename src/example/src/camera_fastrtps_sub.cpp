@@ -167,14 +167,14 @@ int main(int argc, char ** argv)
 //        previous_id = static_cast<int>(msg->publish_timestamp);
 
         full_us_vec.push_back(full_us);
-        total_full_us      += full_us;
+        total_full_us += full_us;
         ++frame_count;
 
         cv::Mat img(
-            static_cast<int>(msg->height),
-            static_cast<int>(msg->width),
+            static_cast<int>(msg->image_intrinsics.height),
+            static_cast<int>(msg->image_intrinsics.width),
             IMG_TYPE,
-            const_cast<uint8_t *>(msg->data.data())
+            const_cast<uint8_t *>(msg->data_color.data())
         );
         process_image(img);
 

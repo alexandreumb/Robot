@@ -27,18 +27,21 @@
   namespace robot_steering_controller
   {
   // name constants for state interfaces
-  static constexpr size_t POS_Z = 35;
+  static constexpr size_t POS_X = 35;
   static constexpr size_t POS_Y = 36;
-  static constexpr size_t POS_X = 37;
+  static constexpr size_t POS_Z = 37;
   static constexpr size_t VEL_NORTH = 38;
   static constexpr size_t VEL_EAST = 39;
   static constexpr size_t HEADING = 40;
+  static constexpr size_t NEXT_POS_X = 41;
+  static constexpr size_t NEXT_POS_Y = 42;
+  static constexpr size_t NEXT_POS_Z = 43;
 
   // name constants for command interfaces
   static constexpr size_t CMD_TRACTION_WHEELS = 0;
   static constexpr size_t CMD_STEERING = 1;
 
-  static constexpr size_t NR_STATE_ITFS = 3;
+  static constexpr size_t NR_STATE_ITFS = 44;
   static constexpr size_t NR_CMD_ITFS = 2;
   static constexpr size_t NR_REF_ITFS = 2;
 

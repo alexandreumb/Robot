@@ -5,10 +5,11 @@
 // ── native iceoryx headers ────────────────────────────────────────────────────
 #include "iceoryx_posh/popo/untyped_subscriber.hpp"
 #include "iceoryx_posh/runtime/posh_runtime.hpp"
+#include "Shared_Memory_Sensors/header_accessor.h"
 
 #define GPU 0
 #if GPU
-    #include "Yolo_Tensorrt/yolov8.h"
+    //#include "Yolo_Tensorrt/yolov8.h"
 #else
     //#include <onnxruntime_cxx_api.h>
 #endif
@@ -156,7 +157,6 @@ void process_image(YoloV8& detector, const cv::Mat& img_color, const cv::Mat& im
 
 }
 
-#else
 void process_image(Ort::Session& detector, const cv::Mat& img   )
 {
     //run_onnx_inference(detector, img); // You would implement this function to run inference
@@ -164,6 +164,7 @@ void process_image(Ort::Session& detector, const cv::Mat& img   )
     (void)img;
     std::this_thread::sleep_for(std::chrono::milliseconds(10)); // Simulate 10 ms processing time
 }
+#else
 #endif
 
 int main(int argc, char ** argv)
@@ -181,13 +182,13 @@ int main(int argc, char ** argv)
     YoloV8Config config;
     YoloV8 detector(engine_file_path, config);
 
-#else
     Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "yolo");
     Ort::Session* detector = nullptr;
-
+    
+#else
 #endif
 
-#if !GPU
+#if GPU
     Ort::SessionOptions session_options;
     session_options.SetIntraOpNumThreads(1);
     session_options.SetGraphOptimizationLevel(
@@ -317,13 +318,19 @@ detector = &session;
                 const_cast<uint8_t *>(msg->data_depth.data())
             );
 
-            image_intrinsics img_intrinsics = msg.image_intrinsics;
-
+            image_intrinsics img_intrinsics;
+            img_intrinsics.width = msg->image_intrinsics.width;  
+            img_intrinsics.height = msg->image_intrinsics.height;
+            img_intrinsics.fx = msg->image_intrinsics.fx;
+            img_intrinsics.fy = msg->image_intrinsics.fy;
+            img_intrinsics.ppx = msg->image_intrinsics.ppx;
+            img_intrinsics.ppy = msg->image_intrinsics.ppy;
+            img_intrinsics.depth_units = msg->image_intrinsics.depth_units;
             // ── Step 5: process ───────────────────────────────────────────────
 #if GPU
             process_image(detector, img_color, img_depth, img_intrinsics);
-#else
             process_image(*detector, img_color);
+    #else
 #endif
 
             // ── Step 6: release chun  k back to iceoryx pool ────────────────────

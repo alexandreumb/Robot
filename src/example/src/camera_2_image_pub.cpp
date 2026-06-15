@@ -42,12 +42,7 @@ int main(int argc, char ** argv)
         .durability_volatile();
 
     // ── publisher 1 — vision pipeline (iceoryx zero-copy) ────────────────────
-    auto pub_process = node->create_publisher<Image8Mb>("camera", qos);
-
-    // ── publisher 2 — Nav2/RViz/rosbag (sensor_msgs/Image, FastDDS) ──────────
-    // sensor_msgs/Image has dynamic data vector — only allocates actual bytes
-    // Nav2 costmap, RViz image display, and rosbag all expect this type
-    auto pub_nav2 = node->create_publisher<Image8Mb>("camera_2", qos);
+    auto pub = node->create_publisher<Image8Mb>("camera", qos);
 
     // ── camera init ───────────────────────────────────────────────────────────
     cv::VideoCapture cap(CAM_INDEX, cv::CAP_V4L2);
@@ -59,13 +54,13 @@ int main(int argc, char ** argv)
     cap.set(cv::CAP_PROP_FRAME_HEIGHT, IMG_HEIGHT);
     cap.set(cv::CAP_PROP_BUFFERSIZE,   1);
 
-    const size_t step       = IMG_WIDTH * PIXEL_BYTES;
+    const size_t step = IMG_WIDTH * PIXEL_BYTES;
     const size_t frame_size = step * IMG_HEIGHT;
 
     // ── validate iceoryx buffer ───────────────────────────────────────────────
     {
-        auto probe = pub_process->borrow_loaned_message();
-        constexpr size_t buf_size = sizeof(probe.get().data);
+        auto probe = pub->borrow_loaned_message();
+        constexpr size_t buf_size = sizeof(probe.get().data_color);
         if (frame_size > buf_size) {
             RCLCPP_ERROR(node->get_logger(),
                 "Frame size %zu exceeds buffer %zu", frame_size, buf_size);
@@ -85,14 +80,12 @@ int main(int argc, char ** argv)
     while (!stop && rclcpp::ok())
     {
         // ── Step 1: borrow iceoryx chunk for vision pipeline ──────────────────
-        auto loaned_msg = pub_process->borrow_loaned_message();
-        auto loaned_msg_nav2 = pub_nav2->borrow_loaned_message();
+        auto loaned_msg = pub->borrow_loaned_message();
 
-        auto & msg      = loaned_msg.get();
-        auto & msg_nav2 = loaned_msg_nav2.get();
+        auto & msg = loaned_msg.get();
 
         // ── Step 2: Mat header over iceoryx shm ───────────────────────────────
-        cv::Mat frame(IMG_HEIGHT, IMG_WIDTH, IMG_TYPE, msg.data.data());
+        cv::Mat frame(IMG_HEIGHT, IMG_WIDTH, IMG_TYPE, msg.data_color.data());
 
         // ── Step 3: capture — V4L2 writes directly into iceoryx shm ──────────
         // simulates RealSense: color.get_data() → memcpy into iceoryx chunk
@@ -103,38 +96,22 @@ int main(int argc, char ** argv)
         }
 
         // ── Step 4: shared capture timestamp ──────────────────────────────────
-        int64_t capture_ns = monotonic_now_ns();
+        int64_t capture_ns                = monotonic_now_ns();
 
         // ── Step 5: fill iceoryx message metadata ─────────────────────────────
-        msg.width         = IMG_WIDTH;
-        msg.height        = IMG_HEIGHT;
-        msg.step          = static_cast<uint32_t>(step);
-        msg.is_bigendian  = false;
-        msg.frequency     = CAM_FREQ_HZ;
-        msg.timestamp     = capture_ns;
+        msg.image_intrinsics.width         = IMG_WIDTH;
+        msg.image_intrinsics.height        = IMG_HEIGHT;
+        msg.step_color                    = static_cast<uint32_t>(step);
+        msg.is_bigendian                  = false;
+        msg.frequency                     = CAM_FREQ_HZ;
+        msg.timestamp                     = capture_ns;
 
-        msg_nav2.width           = IMG_WIDTH;
-        msg_nav2.height          = IMG_HEIGHT;
-        msg_nav2.step            = static_cast<uint32_t>(step);
-        msg_nav2.is_bigendian    = false;
-        msg_nav2.frequency       = CAM_FREQ_HZ;
-        msg_nav2.timestamp       = capture_ns;
-
-        capture_ns = monotonic_now_ns();
-        // ── Step 6: memcpy into nav2 message ──────────────────────────────────
-        // simulates RealSense path: RealSense buffer → sensor_msgs/Image
-        // source is iceoryx shm (virtual cam) or color.get_data() (RealSense)
-        // FastDDS will do a second internal memcpy when publish() is called
-        std::memcpy(msg_nav2.data.data(), frame.data, frame_size);
+        capture_ns                        = monotonic_now_ns();
 
         // ── Step 7: publish vision message (iceoryx zero-copy) ────────────────
-
         msg.publish_timestamp = capture_ns;
-        msg_nav2.publish_timestamp = capture_ns;
 
-        pub_process->publish(std::move(loaned_msg));
-        pub_nav2->publish(std::move(loaned_msg_nav2));
-
+        pub->publish(std::move(loaned_msg));
     }
 
     RCLCPP_INFO(node->get_logger(), "Shutting down dual publisher");
