@@ -2,12 +2,21 @@
 #include <csignal>
 #include <thread>
 #include <rclcpp/rclcpp.hpp>
+#include <time.h>
+
 #include "msgs/msg/velocity.hpp"
 
 std::atomic<bool> running{true};
 std::atomic<int> velocity{0};
 
 void signal_handler(int) { running = false; }
+
+inline int64_t monotonic_now_ns()
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return static_cast<int64_t>(ts.tv_sec) * 1'000'000'000LL + ts.tv_nsec;
+}
 
 int main(int argc, char ** argv)
 {
@@ -26,10 +35,12 @@ int main(int argc, char ** argv)
 
     std::thread pub_thread([&]() {
         while (running) {
-            msg.header.stamp = node->now();
+            auto time = monotonic_now_ns();
+            msg.header.stamp.sec = time / 1'000'000'000LL;
+            msg.header.stamp.nanosec = time % 1'000'000'000LL;
             msg.velocity = velocity.load();
-            publisher->publish(msg);
             printf("Publishing velocity: %d\n", velocity.load());
+            publisher->publish(msg);
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     });
