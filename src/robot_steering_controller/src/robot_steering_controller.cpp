@@ -316,7 +316,6 @@ bool RobotSteeringController::update_odometry(const rclcpp::Duration & period)
   return true;
 }
 
-
 controller_interface::InterfaceConfiguration
 RobotSteeringController::state_interface_configuration() const
 {

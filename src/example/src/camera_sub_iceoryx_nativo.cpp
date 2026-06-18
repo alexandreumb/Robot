@@ -7,11 +7,11 @@
 #include "iceoryx_posh/runtime/posh_runtime.hpp"
 #include "Shared_Memory_Sensors/header_accessor.h"
 
-#define GPU 0
+#define GPU 1
 #if GPU
-    //#include "Yolo_Tensorrt/yolov8.h"
+    #include "Yolo_Tensorrt/yolov8.h"
 #else
-    //#include <onnxruntime_cxx_api.h>
+    #include <onnxruntime_cxx_api.h>
 #endif
 
 #include <atomic>
@@ -144,7 +144,7 @@ void configure_thread()
 void process_image(YoloV8& detector, const cv::Mat& img_color, const cv::Mat& img_depth, image_intrinsics img_intrinsics)
 {
     auto max_detected = 0.2f;
-    auto objects = detector.detectObjects(img_color);
+    std::vector<Object> objects = detector.detectObjects(img_color);
     if (objects.size() > 1)
     {
         for (Object &object :objects) 
@@ -153,10 +153,11 @@ void process_image(YoloV8& detector, const cv::Mat& img_color, const cv::Mat& im
         }
     }
 
-    auto ret = detector.extractObjects(objects, img_depth, img_intrinsics, max_detected);
+    auto ret = detector.extractObjects(img_depth, objects, img_intrinsics, max_detected);
 
 }
 
+#else
 void process_image(Ort::Session& detector, const cv::Mat& img   )
 {
     //run_onnx_inference(detector, img); // You would implement this function to run inference
@@ -164,7 +165,6 @@ void process_image(Ort::Session& detector, const cv::Mat& img   )
     (void)img;
     std::this_thread::sleep_for(std::chrono::milliseconds(10)); // Simulate 10 ms processing time
 }
-#else
 #endif
 
 int main(int argc, char ** argv)
@@ -181,14 +181,13 @@ int main(int argc, char ** argv)
 #if GPU
     YoloV8Config config;
     YoloV8 detector(engine_file_path, config);
-
-    Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "yolo");
-    Ort::Session* detector = nullptr;
     
 #else
+    Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "yolo");
+    Ort::Session* detector = nullptr;    
 #endif
 
-#if GPU
+#if !GPU
     Ort::SessionOptions session_options;
     session_options.SetIntraOpNumThreads(1);
     session_options.SetGraphOptimizationLevel(
@@ -199,8 +198,7 @@ int main(int argc, char ** argv)
         onnxModelPath.c_str(),
         session_options);
 
-detector = &session;
-
+    detector = &session;
 #endif
 
     // ── ROS2 init — still needed for logging and result publishing ────────────
@@ -329,8 +327,8 @@ detector = &session;
             // ── Step 5: process ───────────────────────────────────────────────
 #if GPU
             process_image(detector, img_color, img_depth, img_intrinsics);
+#else   
             process_image(*detector, img_color);
-    #else
 #endif
 
             // ── Step 6: release chun  k back to iceoryx pool ────────────────────

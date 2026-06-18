@@ -67,8 +67,6 @@ robot_steering_controller:
     read: 0
     file_name: ""
 
-
-
 gps_sensor_broadcaster:
   ros__parameters:
     use_sim_time: false  # Set to true if using Gazebo/simulation

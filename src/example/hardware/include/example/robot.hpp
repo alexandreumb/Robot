@@ -70,6 +70,12 @@ namespace example
         JointValue state;
         JointValue command;
     };
+
+    struct ControlData {
+        float direction{0.0}; // Original precision: 2 decimal places
+        float velocity{0.0};  // Original precision: 3 decimal places
+    };
+
     class Robot4FarmersHardware : public hardware_interface::SystemInterface
     {
     public:
@@ -123,8 +129,55 @@ namespace example
 
         double get_command(const std::string &name);
         void set_command(const std::string &name, double value);
+        
+        bool sendWheelState(bool reverse);
+
+        static void EncodeControl(const ControlData& data, uint8_t* buffer) {
+            // Calculate scaling limits for direction (int16_t)
+            constexpr float dir_scale = 100.0f;
+            constexpr float dir_max = std::numeric_limits<int16_t>::max() / dir_scale;  // ~327.67
+            constexpr float dir_min = std::numeric_limits<int16_t>::min() / dir_scale;  // ~-327.68
+
+            // Calculate scaling limits for velocity (int16_t)
+            constexpr float vel_scale = 1000.0f;
+            constexpr float vel_max = std::numeric_limits<int16_t>::max() / vel_scale;  // ~32.767
+            constexpr float vel_min = std::numeric_limits<int16_t>::min() / vel_scale;  // ~-32.768
+
+            // Clamp and scale values
+            int16_t dir_scaled = static_cast<int16_t>(
+                std::clamp(data.direction, dir_min, dir_max) * dir_scale
+            );
+            
+            int16_t vel_scaled = static_cast<int16_t>(
+                std::clamp(data.velocity, vel_min, vel_max) * vel_scale
+            );
+
+            // Pack into buffer (little-endian)
+            buffer[0] = static_cast<uint8_t>(dir_scaled & 0xFF);        // Direction LSB
+            buffer[1] = static_cast<uint8_t>((dir_scaled >> 8) & 0xFF); // Direction MSB
+            buffer[2] = static_cast<uint8_t>(vel_scaled & 0xFF);        // Velocity LSB
+            buffer[3] = static_cast<uint8_t>((vel_scaled >> 8) & 0xFF); // Velocity MSB
+            
+            // Remaining bytes set to 0 (unused)
+            buffer[4] = buffer[5] = buffer[6] = buffer[7] = 0;
+        }
+
+        static constexpr unsigned int Device = 0b0000;
+
+        // Message IDs (unchanged)
+        static constexpr unsigned int Control =         0b000'0000;
+        static constexpr unsigned int WheelState =      0b000'0001;
+        static constexpr unsigned int StartAS =         0b000'0011;
+        static constexpr unsigned int StopAS =          0b000'0100;
+        static constexpr unsigned int StartMoving =     0b000'0101;
+        static constexpr unsigned int StopMoving =      0b000'0110;
+
+        static constexpr unsigned int ID(unsigned int messageID) {
+            return (Device << 8) | messageID;
+        }
 
     private:
+        bool sendFrame(uint32_t canId, const uint8_t *data, uint8_t dlc);
         void open_can();
         void can_loop();
 
@@ -142,6 +195,8 @@ namespace example
         bool can_running_;
         std::string can_interface_{"can0"};
         int bytes_received{0};
+        int bytes_sent{0};
+        bool prev_reverse{false};
 
 
         std::thread can_thread_;
@@ -152,6 +207,7 @@ namespace example
         int write_front {0};
         int write_rear {0};
         int write_direction {0};
-    };
+    
+};
 
 } // namespace example

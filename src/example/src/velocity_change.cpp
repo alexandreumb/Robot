@@ -55,7 +55,7 @@ int main(int argc, char ** argv)
             case '3': velocity = 3; break;
             case '4': velocity = 4; break;
             case '5': velocity = 5; break;
-            case '6': velocity = 6; break;
+            case '6': velocity = -1; break;
             case 'x': running = false; break;
             default: break;
         }

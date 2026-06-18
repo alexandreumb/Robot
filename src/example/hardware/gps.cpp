@@ -473,9 +473,9 @@ hardware_interface::return_type GpsHardware::read(
     for (auto &joint : joints_) 
     {
         joint.state = copy;
-        joint.state.next_point_north = 1.0;
-        joint.state.next_point_east = 2.0;
-        joint.state.next_point_down = 3.0;
+        joint.state.next_point_north = 0.0;
+        joint.state.next_point_east = 0.0;
+        joint.state.next_point_down = 0.0;
         if (i % 100 == 0)
         {
 //            RCLCPP_INFO(get_logger(), "Writing command for %s: gnss_fix=%.2f", joint.joint_name.c_str(), joint.state.gnss_fix);

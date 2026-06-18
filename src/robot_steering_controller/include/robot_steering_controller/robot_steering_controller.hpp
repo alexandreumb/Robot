@@ -36,7 +36,7 @@
   static constexpr size_t NEXT_POS_X = 41;
   static constexpr size_t NEXT_POS_Y = 42;
   static constexpr size_t NEXT_POS_Z = 43;
-
+    
   // name constants for command interfaces
   static constexpr size_t CMD_TRACTION_WHEELS = 0;
   static constexpr size_t CMD_STEERING = 1;

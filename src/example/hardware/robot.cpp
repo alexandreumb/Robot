@@ -13,8 +13,66 @@
 namespace example
 {
 
-#define SEND_CAN_COMMANDS 0
-#define CAN_AVAILABLE 0
+#define SEND_CAN_COMMANDS 1
+#define CAN_AVAILABLE 1
+
+bool Robot4FarmersHardware::sendWheelState(bool reverse)
+{
+    std::array<uint8_t, 8> data{};
+
+    // Byte 0: FRONT  [LB RB LR RR] bits 7..4
+    // Byte 1: REAR   [LB RB LR RR] bits 7..4
+    // We only touch LR/RR (reverse) bits here.
+    if (reverse)
+    {
+        data[0] |= 0x20; // leftReverse
+        data[0] |= 0x10; // rightReverse
+        data[1] |= 0x20; // leftReverse
+        data[1] |= 0x10; // rightReverse
+    }
+
+    if (!sendFrame(WheelState, data.data(), static_cast<uint8_t>(data.size())))
+    {
+        RCLCPP_INFO(get_logger(), "wheel not open");
+        return false;
+    }
+
+    return true;
+}
+
+bool Robot4FarmersHardware::sendFrame(uint32_t canId, const uint8_t *data, uint8_t dlc)
+{
+    std::lock_guard<std::mutex> lock(can_mutex_);
+
+    if (can_socket_fd_ < 0)
+    {
+        RCLCPP_INFO(get_logger(), "CAN not open");
+        return false;
+    }
+
+    if (dlc > 8)
+    {
+        RCLCPP_INFO(get_logger(), "Invalid DLC (max 8)");
+        return false;
+    }
+
+    struct can_frame frame;
+    std::memset(&frame, 0, sizeof(frame));
+    frame.can_id = canId;
+    frame.can_dlc = dlc;
+    if (data && dlc > 0)
+    {
+        std::memcpy(frame.data, data, dlc);
+    }
+
+    const ssize_t n = ::write(can_socket_fd_, &frame, sizeof(frame));
+    if (n != static_cast<ssize_t>(sizeof(frame)))
+    {
+        RCLCPP_INFO(get_logger(), "No data");
+    }
+
+    return true;
+}
 
 void Robot4FarmersHardware::open_can()
 {
@@ -45,11 +103,15 @@ void Robot4FarmersHardware::open_can()
         can_socket_fd_ = -1;
         return;
     }
+    RCLCPP_INFO(get_logger(), "can connected");
 }
 
 void Robot4FarmersHardware::can_loop()
 {
     struct can_frame frame;
+    static constexpr unsigned int Device = 0b0010;
+    static constexpr unsigned int Torque = 0b000'0010;
+    static constexpr unsigned int Torque_id = (Device<<8) | Torque;
     while (can_running_) {
         bytes_received = ::read(can_socket_fd_, &frame, sizeof(struct can_frame));
         
@@ -65,10 +127,10 @@ void Robot4FarmersHardware::can_loop()
                 std::lock_guard<std::mutex> lock(can_mutex_);
                 switch (frame.can_id)
                 {
-                    case 0b001000000000: // Front Throttle
-                        latest_can_data_.throttle_front_left = (frame.data[4] << 8) | frame.data[5];
-                        latest_can_data_.throttle_front_right = (frame.data[6] << 8) | frame.data[7];
-                        latest_can_data_.throttle_front_timestamp = (frame.data[0] << 24) | (frame.data[1] << 16) | (frame.data[2] << 8)  | frame.data[3];
+                    case Torque_id: // Front Throttle
+                        latest_can_data_.velocity_front_left = static_cast<double>(static_cast<int16_t>((frame.data[0] << 8) | frame.data[1]))/100;
+                        latest_can_data_.velocity_front_right = static_cast<double>(static_cast<int16_t>((frame.data[2] << 8) | frame.data[3]))/100;
+                        RCLCPP_INFO(get_logger(), "velocity: %f", latest_can_data_.velocity_front_right);
                         break;
 
                     case 0b001000000001: // Front temperature
@@ -330,6 +392,10 @@ hardware_interface::return_type Robot4FarmersHardware::read(
 hardware_interface::return_type Robot4FarmersHardware::write(
     const rclcpp::Time &, const rclcpp::Duration &)
 {
+    static constexpr unsigned int Device = 0b0000;
+    static constexpr unsigned int Control = 0b000'0000;
+    std::array<uint8_t, 8> data;
+
 #if CAN_AVAILABLE
     if (can_socket_fd_ < 0)
     {
@@ -342,20 +408,38 @@ hardware_interface::return_type Robot4FarmersHardware::write(
     for (const auto &joint : joints_)    {
 
 #if SEND_CAN_COMMANDS
-        stuct can_frame frame{};
-        frame.dlc = 8; // Data length code (number of bytes in data)
 #endif
-        if (joint.joint_name.find("direction") != std::string::npos)
-        {
+
 #if SEND_CAN_COMMANDS
-            //::write(can_socket_fd_, &joint.command.direction, sizeof(joint.command.direction));
-            RCLCPP_INFO(get_logger(), "Writing command for %s: direction=%.2f", joint.joint_name.c_str(), joint.command.direction);
+        auto vel = -1.0f;
+
+        ControlData cd;
+        cd.velocity = static_cast<float>(vel);
+        cd.direction = -10.0f;
+        const float velDeadband = 0.01f;
+        bool reverse = false;
+        if (cd.velocity < -velDeadband)
+        {
+            reverse = true;
+            cd.velocity = -cd.velocity;
+        }
+
+        if (reverse != prev_reverse)
+        {
+            sendWheelState(reverse);
+            prev_reverse = reverse;
+        }
+
+        RCLCPP_INFO(get_logger(), "velocity to send: %f", cd.velocity);
+        EncodeControl(cd, data.data());
+        auto can_dlc = static_cast<uint8_t>(data.size());
+        auto can_id = (Device << 8) | Control;
+        sendFrame(can_id, data.data(), can_dlc);
 #else
             if (write_direction % 1000 == 0)
                 RCLCPP_INFO(get_logger(), "Writing command for %s: direction=%.2f", joint.joint_name.c_str(), joint.command.direction);
             write_direction++;
 #endif
-        }
     }
     return hardware_interface::return_type::OK;
 }
