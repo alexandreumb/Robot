@@ -13,47 +13,47 @@ namespace example
 {
     struct JointValue
     {
-        double temperature_front_left;
-        double temperature_front_right;
-        double temperature_front_timestamp;
-        double temperature_rear_left;
-        double temperature_rear_right;
-        double temperature_rear_timestamp;
-        double velocity_front_left;
-        double velocity_front_right;
-        double velocity_front_timestamp;
-        double velocity_rear_left;
-        double velocity_rear_right;
-        double velocity_rear_timestamp;
-        double throttle_front_left;
-        double throttle_front_right;
-        double throttle_front_timestamp;
-        double throttle_rear_left;
-        double throttle_rear_right;
-        double throttle_rear_timestamp;
-        double reverse_front_left;
-        double reverse_front_right;
-        double reverse_front_timestamp;
-        double reverse_rear_left;
-        double reverse_rear_right;
-        double reverse_rear_timestamp;
-        double brake_front_left;
-        double brake_front_right;
-        double brake_front_timestamp;
-        double brake_rear_left;
-        double brake_rear_right;
-        double brake_rear_timestamp;
-        double steering_angle;
-        double steering_angle_timestamp;
-        double steering_torque_high;
-        double steering_torque_low;
-        double steering_torque_timestamp;
-        double battery_voltage;
-        double battery_voltage_timestamp;
-        double controller_status;
-        double controller_status_timestamp;
-        double velocity;
-        double direction;
+        double temperature_front_left{0.0};
+        double temperature_front_right{0.0};
+        double temperature_front_timestamp{0.0};
+        double temperature_rear_left{0.0};
+        double temperature_rear_right{0.0};
+        double temperature_rear_timestamp{0.0};
+        double velocity_front_left{0.0};
+        double velocity_front_right{0.0};
+        double velocity_front_timestamp{0.0};
+        double velocity_rear_left{0.0};
+        double velocity_rear_right{0.0};
+        double velocity_rear_timestamp{0.0};
+        double throttle_front_left{0.0};
+        double throttle_front_right{0.0};
+        double throttle_front_timestamp{0.0};
+        double throttle_rear_left{0.0};
+        double throttle_rear_right{0.0};
+        double throttle_rear_timestamp{0.0};
+        double reverse_front_left{0.0};
+        double reverse_front_right{0.0};
+        double reverse_front_timestamp{0.0};
+        double reverse_rear_left{0.0};
+        double reverse_rear_right{0.0};
+        double reverse_rear_timestamp{0.0};
+        double brake_front_left{0.0};
+        double brake_front_right{0.0};
+        double brake_front_timestamp{0.0};
+        double brake_rear_left{0.0};
+        double brake_rear_right{0.0};
+        double brake_rear_timestamp{0.0};
+        double steering_angle{0.0};
+        double steering_angle_timestamp{0.0};
+        double steering_torque_high{0.0};
+        double steering_torque_low{0.0};
+        double steering_torque_timestamp{0.0};
+        double battery_voltage{0.0};
+        double battery_voltage_timestamp{0.0};
+        double controller_status{0.0};
+        double controller_status_timestamp{0.0};
+        double velocity{0.0};
+        double direction{0.0};
     };
 
     struct Joint
@@ -89,11 +89,7 @@ namespace example
             const rclcpp_lifecycle::State &previous_state) override;
 
         hardware_interface::CallbackReturn on_cleanup(
-            const rclcpp_lifecycle::State &previous_state) override
-        {
-            RCLCPP_INFO(get_logger(), "Cleaning up Robot4FarmersHardware");
-            return hardware_interface::CallbackReturn::SUCCESS;
-        }
+            const rclcpp_lifecycle::State &previous_state) override;
 
         hardware_interface::CallbackReturn on_activate(
             const rclcpp_lifecycle::State &previous_state) override;
@@ -102,11 +98,7 @@ namespace example
             const rclcpp_lifecycle::State &previous_state) override;
 
         hardware_interface::CallbackReturn on_shutdown(
-            const rclcpp_lifecycle::State &previous_state) override
-        {
-            RCLCPP_INFO(get_logger(), "Shutting down Robot4FarmersHardware");
-            return hardware_interface::CallbackReturn::SUCCESS;
-        }
+            const rclcpp_lifecycle::State &previous_state) override;
 
         std::vector<hardware_interface::StateInterface> export_state_interfaces() override;
 
@@ -129,39 +121,42 @@ namespace example
 
         double get_command(const std::string &name);
         void set_command(const std::string &name, double value);
-        
+
+    private:
+        static constexpr unsigned int Robot4FarmersHardware::ID(unsigned int messageID) {
+            return (Device << 8) | messageID;
+        };
+
         bool sendWheelState(bool reverse);
+        static void EncodeControl(const ControlData& data, uint8_t* buffer);
+        bool sendFrame(uint32_t canId, const uint8_t *data, uint8_t dlc);
+        void open_can();
+        void can_loop();
 
-        static void EncodeControl(const ControlData& data, uint8_t* buffer) {
-            // Calculate scaling limits for direction (int16_t)
-            constexpr float dir_scale = 100.0f;
-            constexpr float dir_max = std::numeric_limits<int16_t>::max() / dir_scale;  // ~327.67
-            constexpr float dir_min = std::numeric_limits<int16_t>::min() / dir_scale;  // ~-327.68
+        rclcpp::Clock clock_;
+        serial::Serial serial_;
+        std::vector<Joint> joints_;
 
-            // Calculate scaling limits for velocity (int16_t)
-            constexpr float vel_scale = 1000.0f;
-            constexpr float vel_max = std::numeric_limits<int16_t>::max() / vel_scale;  // ~32.767
-            constexpr float vel_min = std::numeric_limits<int16_t>::min() / vel_scale;  // ~-32.768
+        int can_socket_fd_;
+        bool can_running_;
+        std::string can_interface_{"can0"};
+        int bytes_received{0};
+        int bytes_sent{0};
+        bool prev_reverse{false};
 
-            // Clamp and scale values
-            int16_t dir_scaled = static_cast<int16_t>(
-                std::clamp(data.direction, dir_min, dir_max) * dir_scale
-            );
-            
-            int16_t vel_scaled = static_cast<int16_t>(
-                std::clamp(data.velocity, vel_min, vel_max) * vel_scale
-            );
+        std::thread can_thread_;
+        std::mutex can_mutex_;
+        std::mutex can_fd_mutex_;
 
-            // Pack into buffer (little-endian)
-            buffer[0] = static_cast<uint8_t>(dir_scaled & 0xFF);        // Direction LSB
-            buffer[1] = static_cast<uint8_t>((dir_scaled >> 8) & 0xFF); // Direction MSB
-            buffer[2] = static_cast<uint8_t>(vel_scaled & 0xFF);        // Velocity LSB
-            buffer[3] = static_cast<uint8_t>((vel_scaled >> 8) & 0xFF); // Velocity MSB
-            
-            // Remaining bytes set to 0 (unused)
-            buffer[4] = buffer[5] = buffer[6] = buffer[7] = 0;
-        }
+        JointValue latest_can_data_; // protegido por can_mutex_
 
+        int write_front {0};
+        int write_rear {0};
+        int write_direction {0};
+
+        //CAN ID's
+        
+        //Device id
         static constexpr unsigned int Device = 0b0000;
 
         // Message IDs (unchanged)
@@ -172,42 +167,6 @@ namespace example
         static constexpr unsigned int StartMoving =     0b000'0101;
         static constexpr unsigned int StopMoving =      0b000'0110;
 
-        static constexpr unsigned int ID(unsigned int messageID) {
-            return (Device << 8) | messageID;
-        }
-
-    private:
-        bool sendFrame(uint32_t canId, const uint8_t *data, uint8_t dlc);
-        void open_can();
-        void can_loop();
-
-        rclcpp::Clock clock_;
-        serial::Serial serial_;
-        
-        // Maps for joint states and commands
-        // OLD:
-        // std::unordered_map<std::string, Joint> map_;
-
-        // NEW:
-        std::vector<Joint> joints_;
-
-        int can_socket_fd_;
-        bool can_running_;
-        std::string can_interface_{"can0"};
-        int bytes_received{0};
-        int bytes_sent{0};
-        bool prev_reverse{false};
-
-
-        std::thread can_thread_;
-        std::mutex can_mutex_;
-
-        JointValue latest_can_data_; // protegido por can_mutex_
-
-        int write_front {0};
-        int write_rear {0};
-        int write_direction {0};
-    
 };
 
 } // namespace example

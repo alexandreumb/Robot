@@ -57,9 +57,6 @@
     state_interface_configuration() const override;
 
     ROBOT_STEERING_CONTROLLER__VISIBILITY_PUBLIC controller_interface::CallbackReturn on_init() override;
-    
-    ROBOT_STEERING_CONTROLLER__VISIBILITY_PUBLIC bool update_odometry(
-    const rclcpp::Duration & period);
   
     ROBOT_STEERING_CONTROLLER__VISIBILITY_PUBLIC controller_interface::CallbackReturn on_configure(
     const rclcpp_lifecycle::State & previous_state) override;
@@ -76,9 +73,6 @@
     ROBOT_STEERING_CONTROLLER__VISIBILITY_PUBLIC controller_interface::return_type
     update_reference_from_subscribers() override;
 
-    std::vector<std::string> rear_wheels_state_names_;
-    std::vector<std::string> front_wheels_state_names_;
-
     using ControllerTwistReferenceMsg = geometry_msgs::msg::TwistStamped;
     using ControllerStateMsgOdom = nav_msgs::msg::Odometry;
     using ControllerStateMsgTf = tf2_msgs::msg::TFMessage;
@@ -91,6 +85,7 @@
     controller_interface::CallbackReturn set_interface_numbers(size_t nr_state_itfs, size_t nr_cmd_itfs, size_t nr_ref_itfs);
   
     std::vector<hardware_interface::CommandInterface> on_export_reference_interfaces() override;
+    bool update_odometry(const rclcpp::Duration & period);
 
     realtime_tools::RealtimeBuffer<std::shared_ptr<ImgAnalyzeMsg>> input_ref_img_;
     realtime_tools::RealtimeBuffer<std::shared_ptr<Velocity>> input_ref_vel_;

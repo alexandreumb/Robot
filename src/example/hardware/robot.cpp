@@ -16,6 +16,36 @@ namespace example
 #define SEND_CAN_COMMANDS 1
 #define CAN_AVAILABLE 1
 
+static void Robot4FarmersHardware::EncodeControl(const ControlData& data, uint8_t* buffer) {
+    // Calculate scaling limits for direction (int16_t)
+    constexpr float dir_scale = 100.0f;
+    constexpr float dir_max = std::numeric_limits<int16_t>::max() / dir_scale;  // ~327.67
+    constexpr float dir_min = std::numeric_limits<int16_t>::min() / dir_scale;  // ~-327.68
+
+    // Calculate scaling limits for velocity (int16_t)
+    constexpr float vel_scale = 1000.0f;
+    constexpr float vel_max = std::numeric_limits<int16_t>::max() / vel_scale;  // ~32.767
+    constexpr float vel_min = std::numeric_limits<int16_t>::min() / vel_scale;  // ~-32.768
+
+    // Clamp and scale values
+    int16_t dir_scaled = static_cast<int16_t>(
+        std::clamp(data.direction, dir_min, dir_max) * dir_scale
+    );
+    
+    int16_t vel_scaled = static_cast<int16_t>(
+        std::clamp(data.velocity, vel_min, vel_max) * vel_scale
+    );
+
+    // Pack into buffer (little-endian)
+    buffer[0] = static_cast<uint8_t>(dir_scaled & 0xFF);        // Direction LSB
+    buffer[1] = static_cast<uint8_t>((dir_scaled >> 8) & 0xFF); // Direction MSB
+    buffer[2] = static_cast<uint8_t>(vel_scaled & 0xFF);        // Velocity LSB
+    buffer[3] = static_cast<uint8_t>((vel_scaled >> 8) & 0xFF); // Velocity MSB
+    
+    // Remaining bytes set to 0 (unused)
+    buffer[4] = buffer[5] = buffer[6] = buffer[7] = 0;
+}
+
 bool Robot4FarmersHardware::sendWheelState(bool reverse)
 {
     std::array<uint8_t, 8> data{};
@@ -42,7 +72,7 @@ bool Robot4FarmersHardware::sendWheelState(bool reverse)
 
 bool Robot4FarmersHardware::sendFrame(uint32_t canId, const uint8_t *data, uint8_t dlc)
 {
-    std::lock_guard<std::mutex> lock(can_mutex_);
+    std::lock_guard<std::mutex> lock(can_fd_mutex_);
 
     if (can_socket_fd_ < 0)
     {
@@ -197,6 +227,13 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_configure(
     return hardware_interface::CallbackReturn::SUCCESS;
 }
 
+hardware_interface::CallbackReturn on_cleanup(
+    const rclcpp_lifecycle::State &previous_state)
+{
+    RCLCPP_INFO(get_logger(), "Cleaning up Robot4FarmersHardware");
+    return hardware_interface::CallbackReturn::SUCCESS;
+}
+
 hardware_interface::CallbackReturn Robot4FarmersHardware::on_activate(
     const rclcpp_lifecycle::State &)
 {
@@ -274,17 +311,16 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_deactivate(
 
 #if CAN_AVAILABLE
     can_running_ = false;
+    if (can_thread_.joinable())
+        can_thread_.join();
 
     if (can_socket_fd_ >= 0) 
     {
+        std::lock_guard<mutex> lock(can_fd_mutex_);
         close(can_socket_fd_);
         can_socket_fd_ = -1;
     }
 
-    if (can_thread_.joinable())
-    {    
-        can_thread_.join();
-    }
 
 #endif
 
@@ -340,6 +376,13 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_deactivate(
     }
 
     RCLCPP_INFO(get_logger(), "Successfully deactivated!");
+    return hardware_interface::CallbackReturn::SUCCESS;
+}
+
+hardware_interface::CallbackReturn on_shutdown(
+    const rclcpp_lifecycle::State &previous_state) override
+{
+    RCLCPP_INFO(get_logger(), "Shutting down Robot4FarmersHardware");
     return hardware_interface::CallbackReturn::SUCCESS;
 }
 

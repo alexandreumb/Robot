@@ -509,23 +509,23 @@ bool GpsHardware::getNextReferencePoint(std::array<double, 3> current_point, std
 
     if(!isRefInit)
     {
-        for (size_t i = 0; i < waypoints_.size(); i++)
+        for (size_t n = 0; i < waypoints_.size(); n++)
         {
-            auto waypoint = waypoints_[i];
+            auto waypoint = waypoints_[n];
             double n, e, d;
             geodetic_converter_.geodetic2Ned(waypoint[0], waypoint[1], waypoint[2], &n, &e, &d);
-            waypoints_[i] = {n, e, d};
+            waypoints_[n] = {n, e, d};
         }
     }
 
-    size_t i = 0;
-    for (; i < waypoints_.size(); i++)
+    size_t m = 0;
+    for (; m < waypoints_.size(); m++)
     {
-        int distance = pow(waypoints_[i][0] - current_point[0], 2) + pow(waypoints_[i][1] - current_point[1], 2) + pow(waypoints_[i][2] - current_point[2], 2);
+        int distance = pow(waypoints_[m][0] - current_point[0], 2) + pow(waypoints_[m][1] - current_point[1], 2) + pow(waypoints_[m][2] - current_point[2], 2);
         distance = sqrt(distance) - WAYPOINT_MIN_DIST_SQ;
         if (distance > 0)
         {
-            next_point = waypoints_[i];
+            next_point = waypoints_[m];
             waypoint_found = true;
             break;
         }
