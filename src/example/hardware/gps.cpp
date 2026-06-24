@@ -23,13 +23,13 @@ namespace example
 
 #define GPS_ACTIVE 0
 #define WAYPOINT_MIN_DIST_SQ 1
-
+#define TEST 0
 
 //////////////////////////////////////////////////////////////
 // SOCKET
 //////////////////////////////////////////////////////////////
 
-void GpsHardware::open_socket()
+void GpsHardware::openSocket()
 {
     struct addrinfo hints{}, *addr;
     hints.ai_family   = AF_INET;
@@ -112,7 +112,7 @@ void GpsHardware::open_socket()
 // ETHERNET LOOP (thread separada)
 //////////////////////////////////////////////////////////////
 
-void GpsHardware::ethernet_loop()
+void GpsHardware::ethernetLoop()
 {
     GPSData buffer{};
     
@@ -336,17 +336,36 @@ hardware_interface::CallbackReturn GpsHardware::on_activate(
             RCLCPP_ERROR(get_logger(), "No waypoints found in file");
             return CallbackReturn::ERROR;
         }
+
+#if TEST
+        const char* home = getenv("HOME");
+        if (home == nullptr) {
+            RCLCPP_ERROR(get_logger(), "HOME environment variable not set");
+            return CallbackReturn::ERROR;
+        }
+
+        const std::string output_dir = std::string(home) + "/anpp_files";
+        std::filesystem::create_directories(output_dir); 
+
+        char filename[64];
+        time_t rawtime = time(NULL);
+        struct tm* timeinfo = localtime(&rawtime);
+        sprintf(filename, "ANPP_waypoints_%02d-%02d-%02d-%02d-%02d-%02d.csv", timeinfo->tm_year + 1900, timeinfo->tm_mon + 1, timeinfo->tm_mday, timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
+
+        std::string filepath = std::string(output_dir) + "/" + filename;
+        log_file_ = fopen(filepath.c_str(), "w");
+#endif
     }
 
 #if GPS_ACTIVE
     // Live mode — open socket and start thread as before
-    open_socket();
+    openSocket();
     if (socket_fd_ < 0) {
         RCLCPP_ERROR(get_logger(), "Cannot activate: socket not connected");
         return CallbackReturn::ERROR;
     }
     running_ = true;
-    reader_thread_ = std::thread(&GpsHardware::ethernet_loop, this);
+    reader_thread_ = std::thread(&GpsHardware::ethernetLoop, this);
 #endif
 
     RCLCPP_INFO(get_logger(), "GpsHardware activated");
@@ -367,13 +386,15 @@ hardware_interface::CallbackReturn GpsHardware::on_deactivate(
         socket_fd_ = -1;
     }
 
+    
+    #endif
+    
     if (log_file_ != nullptr)    
     {
         fflush(log_file_);
         fclose(log_file_);
     }
 
-#endif
     RCLCPP_INFO(get_logger(), "GpsHardware deactivated");
     return CallbackReturn::SUCCESS;
 }
@@ -470,6 +491,22 @@ hardware_interface::return_type GpsHardware::read(
 
 #endif
 
+#if TEST
+    if (i < waypoints_.size())
+    {   
+        if (log_file_ != nullptr)
+        {
+            fprintf(log_file_, "%f, %f, %f \n", waypoints_[i][0]*180/M_PI, waypoints_[i][1]*180/M_PI, waypoints_[i][2]);
+            if (flush_counter_++ == 100)
+            {
+                fflush(log_file_);
+                flush_counter_ = 0;
+            }
+            RCLCPP_INFO(get_logger(), "Saving waypoint %i", i);
+        }
+    }
+#endif
+
     for (auto &joint : joints_) 
     {
         joint.state = copy;
@@ -509,17 +546,16 @@ bool GpsHardware::getNextReferencePoint(std::array<double, 3> current_point, std
 
     if(!isRefInit)
     {
-        for (size_t n = 0; i < waypoints_.size(); n++)
+        for (size_t m = 0; i < waypoints_.size(); m++)
         {
-            auto waypoint = waypoints_[n];
+            auto waypoint = waypoints_[m];
             double n, e, d;
             geodetic_converter_.geodetic2Ned(waypoint[0], waypoint[1], waypoint[2], &n, &e, &d);
-            waypoints_[n] = {n, e, d};
+            waypoints_[m] = {n, e, d};
         }
     }
-
-    size_t m = 0;
-    for (; m < waypoints_.size(); m++)
+    
+    for (size_t m = 0; m < waypoints_.size(); m++)
     {
         int distance = pow(waypoints_[m][0] - current_point[0], 2) + pow(waypoints_[m][1] - current_point[1], 2) + pow(waypoints_[m][2] - current_point[2], 2);
         distance = sqrt(distance) - WAYPOINT_MIN_DIST_SQ;

@@ -123,15 +123,47 @@ namespace example
         void set_command(const std::string &name, double value);
 
     private:
-        static constexpr unsigned int Robot4FarmersHardware::ID(unsigned int messageID) {
-            return (Device << 8) | messageID;
+        static constexpr double factor = 2.4 / 29500.0;
+
+        // CAN IDs
+        // Devices IDs
+        static constexpr unsigned int jetson_device =    0b0000;
+        static constexpr unsigned int mci_front_device = 0b0010;
+        static constexpr unsigned int mci_rear_device =  0b0011;
+
+        // Common IDs
+        static constexpr unsigned int Reset =  0b100'0000;
+        static constexpr unsigned int Status = 0b100'0001;
+
+        // Message IDs Jetson
+        static constexpr unsigned int Control =          0b000'0000;
+        static constexpr unsigned int WheelState =       0b000'0001;
+        static constexpr unsigned int StartAS =          0b000'0011;
+        static constexpr unsigned int StopAS =           0b000'0100;
+        static constexpr unsigned int StartMoving =      0b000'0101;
+        static constexpr unsigned int StopMoving =       0b000'0110;
+
+        // Message IDs MCI
+        static constexpr unsigned int Throttle =         0b000'0000;
+        static constexpr unsigned int Temperature =      0b000'0001;
+        static constexpr unsigned int Torque =           0b000'0010;
+        static constexpr unsigned int PidGains =         0b000'0011;
+
+        static constexpr unsigned int IDJetson(unsigned int messageID) {
+            return (jetson_device << 8) | messageID;
+        };
+        static constexpr unsigned int IDMCIFront(unsigned int messageID) {
+            return (mci_front_device << 8) | messageID;
+        };
+        static constexpr unsigned int IDMCIRear(unsigned int messageID) {
+            return (mci_rear_device << 8) | messageID;
         };
 
         bool sendWheelState(bool reverse);
-        static void EncodeControl(const ControlData& data, uint8_t* buffer);
+        void EncodeControl(const ControlData& data, uint8_t* buffer);
         bool sendFrame(uint32_t canId, const uint8_t *data, uint8_t dlc);
-        void open_can();
-        void can_loop();
+        void openCan();
+        void canLoop();
 
         rclcpp::Clock clock_;
         serial::Serial serial_;
@@ -153,20 +185,6 @@ namespace example
         int write_front {0};
         int write_rear {0};
         int write_direction {0};
-
-        //CAN ID's
-        
-        //Device id
-        static constexpr unsigned int Device = 0b0000;
-
-        // Message IDs (unchanged)
-        static constexpr unsigned int Control =         0b000'0000;
-        static constexpr unsigned int WheelState =      0b000'0001;
-        static constexpr unsigned int StartAS =         0b000'0011;
-        static constexpr unsigned int StopAS =          0b000'0100;
-        static constexpr unsigned int StartMoving =     0b000'0101;
-        static constexpr unsigned int StopMoving =      0b000'0110;
-
 };
 
 } // namespace example

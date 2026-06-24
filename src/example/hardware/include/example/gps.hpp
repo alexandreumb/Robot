@@ -125,8 +125,8 @@ namespace example
 
     private:
         // ── Rede ───────────────────────────────────────────────
-        void open_socket();
-        void ethernet_loop();
+        void openSocket();
+        void ethernetLoop();
 
         int         socket_fd_{-1};
         std::string ip_{"192.168.1.150"};

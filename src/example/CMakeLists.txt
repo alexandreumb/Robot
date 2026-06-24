@@ -37,9 +37,6 @@ install(
   DESTINATION share/${PROJECT_NAME}/worlds
 )
 
-add_executable(try src/try.cpp)
-# Link dependencies
-ament_target_dependencies(try rclcpp sensor_msgs std_msgs fixed_size_msgs)
 # ----------------------------
 # Camera nodes
 # ----------------------------
@@ -138,7 +135,7 @@ pluginlib_export_plugin_description_file(hardware_interface example.xml)
 # Install targets
 # ----------------------------
 install(TARGETS
-  camera1_pub camera_bridge camera_sub_nav2 camera_sub_ros2_iceoryx camera_sub_iceoryx_nativo camera_fastrtps_pub camera_fastrtps_sub try camera_2 velocity_change
+  camera1_pub camera_bridge camera_sub_nav2 camera_sub_ros2_iceoryx camera_sub_iceoryx_nativo camera_fastrtps_pub camera_fastrtps_sub camera_2 velocity_change
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 

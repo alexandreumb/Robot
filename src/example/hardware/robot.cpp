@@ -16,7 +16,7 @@ namespace example
 #define SEND_CAN_COMMANDS 1
 #define CAN_AVAILABLE 1
 
-static void Robot4FarmersHardware::EncodeControl(const ControlData& data, uint8_t* buffer) {
+void Robot4FarmersHardware::EncodeControl(const ControlData& data, uint8_t* buffer) {
     // Calculate scaling limits for direction (int16_t)
     constexpr float dir_scale = 100.0f;
     constexpr float dir_max = std::numeric_limits<int16_t>::max() / dir_scale;  // ~327.67
@@ -104,7 +104,7 @@ bool Robot4FarmersHardware::sendFrame(uint32_t canId, const uint8_t *data, uint8
     return true;
 }
 
-void Robot4FarmersHardware::open_can()
+void Robot4FarmersHardware::openCan()
 {
     struct sockaddr_can addr;
     struct ifreq ifr;
@@ -136,12 +136,9 @@ void Robot4FarmersHardware::open_can()
     RCLCPP_INFO(get_logger(), "can connected");
 }
 
-void Robot4FarmersHardware::can_loop()
+void Robot4FarmersHardware::canLoop()
 {
     struct can_frame frame;
-    static constexpr unsigned int Device = 0b0010;
-    static constexpr unsigned int Torque = 0b000'0010;
-    static constexpr unsigned int Torque_id = (Device<<8) | Torque;
     while (can_running_) {
         bytes_received = ::read(can_socket_fd_, &frame, sizeof(struct can_frame));
         
@@ -157,30 +154,37 @@ void Robot4FarmersHardware::can_loop()
                 std::lock_guard<std::mutex> lock(can_mutex_);
                 switch (frame.can_id)
                 {
-                    case Torque_id: // Front Throttle
+                    case IDMCIFront(Torque): // Front Velocity
                         latest_can_data_.velocity_front_left = static_cast<double>(static_cast<int16_t>((frame.data[0] << 8) | frame.data[1]))/100;
                         latest_can_data_.velocity_front_right = static_cast<double>(static_cast<int16_t>((frame.data[2] << 8) | frame.data[3]))/100;
                         RCLCPP_INFO(get_logger(), "velocity: %f", latest_can_data_.velocity_front_right);
                         break;
 
-                    case 0b001000000001: // Front temperature
-                        latest_can_data_.temperature_front_left = (frame.data[4] << 8) | frame.data[5];
-                        latest_can_data_.temperature_front_right = (frame.data[6] << 8) | frame.data[7];
-                        latest_can_data_.temperature_front_timestamp = (frame.data[0] << 24) | (frame.data[1] << 16) | (frame.data[2] << 8) | frame.data[3];
+                    case IDMCIRear(Torque): // Rear Velocity
+                        latest_can_data_.velocity_rear_left = static_cast<double>(static_cast<int16_t>((frame.data[0] << 8) | frame.data[1]))/100;
+                        latest_can_data_.velocity_rear_right = static_cast<double>(static_cast<int16_t>((frame.data[2] << 8) | frame.data[3]))/100;
+                        RCLCPP_INFO(get_logger(), "velocity: %f", latest_can_data_.velocity_front_right);
                         break;
 
-                    case 0b001100000000: // Rear throttle
-                        latest_can_data_.throttle_rear_left = (frame.data[4] << 8) | frame.data[5];
-                        latest_can_data_.throttle_rear_right = (frame.data[6] << 8) | frame.data[7];
-                        latest_can_data_.throttle_rear_timestamp = (frame.data[0] << 24) | (frame.data[1] << 16) | (frame.data[2] << 8) |frame.data[3];
+                    case IDMCIFront(Temperature): // Front Temperature
+                        latest_can_data_.temperature_front_left = ((frame.data[0] << 8) | frame.data[1]) * factor; 
+                        latest_can_data_.temperature_front_right = ((frame.data[2] << 8) | frame.data[3]) * factor; 
+
+                    case IDMCIRear(Temperature): // Rear Temperature
+                        latest_can_data_.temperature_rear_left = ((frame.data[0] << 8) | frame.data[1]) * factor; 
+                        latest_can_data_.temperature_rear_right = ((frame.data[2] << 8) | frame.data[3]) * factor; 
+
+                    case IDMCIFront(Throttle): // Front Throttle
+                        latest_can_data_.throttle_front_left = static_cast<double>(static_cast<int16_t>((frame.data[0] << 8) | frame.data[1]));
+                        latest_can_data_.throttle_front_right = static_cast<double>(static_cast<int16_t>((frame.data[2] << 8) | frame.data[3]));
+                        RCLCPP_INFO(get_logger(), "throttle: %f", latest_can_data_.throttle_front_right);
                         break;
 
-                    case 0b001100000001: // Rear temperature
-                        latest_can_data_.temperature_rear_left = (frame.data[4] << 8) | frame.data[5];
-                        latest_can_data_.temperature_rear_right = (frame.data[6] << 8) | frame.data[7];
-                        latest_can_data_.temperature_rear_timestamp = (frame.data[0] << 24) | (frame.data[1] << 16) | (frame.data[2] << 8) | frame.data[3];
+                    case IDMCIRear(Throttle): // Rear Throttle
+                        latest_can_data_.throttle_rear_left = static_cast<double>(static_cast<int16_t>((frame.data[0] << 8) | frame.data[1]));
+                        latest_can_data_.throttle_rear_right = static_cast<double>(static_cast<int16_t>((frame.data[2] << 8) | frame.data[3]));
+                        RCLCPP_INFO(get_logger(), "throttle: %f", latest_can_data_.throttle_rear_right);
                         break;
-
                     default:
                         // unknown CAN ID
                         break;
@@ -227,7 +231,7 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_configure(
     return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::CallbackReturn on_cleanup(
+hardware_interface::CallbackReturn Robot4FarmersHardware::on_cleanup(
     const rclcpp_lifecycle::State &previous_state)
 {
     RCLCPP_INFO(get_logger(), "Cleaning up Robot4FarmersHardware");
@@ -239,14 +243,14 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_activate(
 {
     RCLCPP_INFO(get_logger(), "Activating Robot4FarmersHardware");
 #if CAN_AVAILABLE
-    open_can();
+    openCan();
     if (can_socket_fd_ < 0) {
         RCLCPP_ERROR(get_logger(), "Cannot activate: CAN socket not connected");
         return CallbackReturn::ERROR;
     }
 
     can_running_ = true;
-    can_thread_ = std::thread(&Robot4FarmersHardware::can_loop, this);
+    can_thread_ = std::thread(&Robot4FarmersHardware::canLoop, this);
 #endif
 
     for (auto &joint : joints_)
@@ -316,7 +320,7 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_deactivate(
 
     if (can_socket_fd_ >= 0) 
     {
-        std::lock_guard<mutex> lock(can_fd_mutex_);
+        std::lock_guard<std::mutex> lock(can_fd_mutex_);
         close(can_socket_fd_);
         can_socket_fd_ = -1;
     }
@@ -379,8 +383,8 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_deactivate(
     return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::CallbackReturn on_shutdown(
-    const rclcpp_lifecycle::State &previous_state) override
+hardware_interface::CallbackReturn Robot4FarmersHardware::on_shutdown(
+    const rclcpp_lifecycle::State &previous_state)
 {
     RCLCPP_INFO(get_logger(), "Shutting down Robot4FarmersHardware");
     return hardware_interface::CallbackReturn::SUCCESS;
@@ -435,8 +439,6 @@ hardware_interface::return_type Robot4FarmersHardware::read(
 hardware_interface::return_type Robot4FarmersHardware::write(
     const rclcpp::Time &, const rclcpp::Duration &)
 {
-    static constexpr unsigned int Device = 0b0000;
-    static constexpr unsigned int Control = 0b000'0000;
     std::array<uint8_t, 8> data;
 
 #if CAN_AVAILABLE
@@ -446,38 +448,33 @@ hardware_interface::return_type Robot4FarmersHardware::write(
         return hardware_interface::return_type::ERROR;
     }
 #endif
-    // In a real implementation, you would write commands to the CAN bus here.
-    // For this example, we just log the commands that would be sent.
-    for (const auto &joint : joints_)    {
-
+    for (const auto &joint : joints_) {
 #if SEND_CAN_COMMANDS
-#endif
+        if (joint.joint_name.find("direction") != std::string::npos) {
 
-#if SEND_CAN_COMMANDS
-        auto vel = -1.0f;
+            ControlData cd;
+            cd.velocity = static_cast<float>(joint.command.velocity);
+            cd.direction = -10.0f;
+            const float velDeadband = 0.01f;
+            bool reverse = false;
+            if (cd.velocity < -velDeadband)
+            {
+                reverse = true;
+                cd.velocity = -cd.velocity;
+            }
 
-        ControlData cd;
-        cd.velocity = static_cast<float>(vel);
-        cd.direction = -10.0f;
-        const float velDeadband = 0.01f;
-        bool reverse = false;
-        if (cd.velocity < -velDeadband)
-        {
-            reverse = true;
-            cd.velocity = -cd.velocity;
+            if (reverse != prev_reverse)
+            {
+                sendWheelState(reverse);
+                prev_reverse = reverse;
+            }
+            
+            RCLCPP_INFO(get_logger(), "velocity to send: %f", joint.command.velocity);
+            EncodeControl(cd, data.data());
+            auto can_dlc = static_cast<uint8_t>(data.size());
+            auto can_id = IDJetson(Control);
+            sendFrame(can_id, data.data(), can_dlc);
         }
-
-        if (reverse != prev_reverse)
-        {
-            sendWheelState(reverse);
-            prev_reverse = reverse;
-        }
-
-        RCLCPP_INFO(get_logger(), "velocity to send: %f", cd.velocity);
-        EncodeControl(cd, data.data());
-        auto can_dlc = static_cast<uint8_t>(data.size());
-        auto can_id = (Device << 8) | Control;
-        sendFrame(can_id, data.data(), can_dlc);
 #else
             if (write_direction % 1000 == 0)
                 RCLCPP_INFO(get_logger(), "Writing command for %s: direction=%.2f", joint.joint_name.c_str(), joint.command.direction);
