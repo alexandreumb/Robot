@@ -454,7 +454,7 @@ hardware_interface::return_type Robot4FarmersHardware::write(
 
             ControlData cd;
             cd.velocity = static_cast<float>(joint.command.velocity);
-            cd.direction = -10.0f;
+            cd.direction = static_cast<float>(joint.command.direction);
             const float velDeadband = 0.01f;
             bool reverse = false;
             if (cd.velocity < -velDeadband)

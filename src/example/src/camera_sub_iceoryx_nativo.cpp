@@ -1,5 +1,5 @@
-#include "fixed_size_msgs/msg/image8_mb.hpp"
-#include "rclcpp/rclcpp.hpp"
+#include "msgs/msg/image8_mb.hpp"
+#include "msgs/msg/img_analyze_msg.hpp"
 #include <opencv4/opencv2/opencv.hpp>
 
 // ── native iceoryx headers ────────────────────────────────────────────────────
@@ -10,8 +10,6 @@
 #define GPU 1
 #if GPU
     #include "Yolo_Tensorrt/yolov8.h"
-#else
-    #include <onnxruntime_cxx_api.h>
 #endif
 
 #include <atomic>
@@ -28,8 +26,10 @@
 #include <vector>
 #include <limits>
 #include <thread>
+#include <rclcpp/rclcpp.hpp>
 
-using Image8Mb = fixed_size_msgs::msg::Image8Mb;
+using Image8Mb = msgs::msg::Image8Mb;
+using ImgAnalyze = msgs::msg::ImgAnalyzeMsg;
 
 // ── service description — derived from rmw_iceoryx name conversion ────────────
 // rule: {type_name, topic_name, "data"} for all ROS2 topics
@@ -141,7 +141,7 @@ void configure_thread()
 
 // ── placeholder pipeline ──────────────────────────────────────────────────────
 #if GPU
-void process_image(YoloV8& detector, const cv::Mat& img_color, const cv::Mat& img_depth, image_intrinsics img_intrinsics)
+std::vector<Object> process_image(YoloV8& detector, const cv::Mat& img_color, const cv::Mat& img_depth, image_intrinsics img_intrinsics)
 {
     auto max_detected = 0.2f;
     std::vector<Object> objects = detector.detectObjects(img_color);
@@ -155,15 +155,7 @@ void process_image(YoloV8& detector, const cv::Mat& img_color, const cv::Mat& im
 
     auto ret = detector.extractObjects(img_depth, objects, img_intrinsics, max_detected);
 
-}
-
-#else
-void process_image(Ort::Session& detector, const cv::Mat& img   )
-{
-    //run_onnx_inference(detector, img); // You would implement this function to run inference
-    (void)detector;
-    (void)img;
-    std::this_thread::sleep_for(std::chrono::milliseconds(10)); // Simulate 10 ms processing time
+    return ret
 }
 #endif
 
@@ -180,35 +172,20 @@ int main(int argc, char ** argv)
 
 #if GPU
     YoloV8Config config;
-    YoloV8 detector(engine_file_path, config);
-    
-#else
-    Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "yolo");
-    Ort::Session* detector = nullptr;    
-#endif
-
-#if !GPU
-    Ort::SessionOptions session_options;
-    session_options.SetIntraOpNumThreads(1);
-    session_options.SetGraphOptimizationLevel(
-        GraphOptimizationLevel::ORT_ENABLE_ALL);
-
-    Ort::Session session(
-        env,
-        onnxModelPath.c_str(),
-        session_options);
-
-    detector = &session;
+    YoloV8 detector(engine_file_path, config);   
 #endif
 
     // ── ROS2 init — still needed for logging and result publishing ────────────
     rclcpp::init(argc, argv);
     auto node = std::make_shared<rclcpp::Node>("camera_subscriber_node");
 
+    auto qos = rclcpp::QoS(1).best_effort().durability_volatile();
+    auto pub = node->create_publisher<msgs::msg::ImgAnalyzeMsg>(
+        "robot_steering_controller/reference", qos);
+
     configure_thread();
     
     std::cout << "After init " << std::endl;
-
     // ── native iceoryx runtime init ───────────────────────────────────────────
     // Must be called once per process. The runtime name must be unique.
     // This connects directly to RouDi shared memory — same RouDi that
@@ -238,9 +215,6 @@ int main(int argc, char ** argv)
     double   min_transport_us   = std::numeric_limits<double>::max();
     double   max_transport_us   = 0.0;
     uint64_t frame_count        = 0;
-    int      previous_id        = -1;
-//    int      skipped            = 0;
-
 
     const std::string csv_path = make_csv_path();
     RCLCPP_INFO(node->get_logger(),
@@ -283,13 +257,6 @@ int main(int argc, char ** argv)
             const double transport_us = static_cast<double>(
                 receive_ns - msg->publish_timestamp) / 1000.0;
 
-            // Need to change the image default message to also send the id of the image before doing this
-            // Also need to add the logic to the publisher
-//            if (msg->id - 1 > previous_id && previous_id != -1) {
-//                skipped += static_cast<int>(msg->id - previous_id - 1);
-//            }
-            previous_id = static_cast<int>(msg->publish_timestamp);
-
             full_us_vec.push_back(full_us);
             transport_us_vec.push_back(transport_us);  
             
@@ -326,9 +293,19 @@ int main(int argc, char ** argv)
             img_intrinsics.depth_units = msg->image_intrinsics.depth_units;
             // ── Step 5: process ───────────────────────────────────────────────
 #if GPU
-            process_image(detector, img_color, img_depth, img_intrinsics);
-#else   
-            process_image(*detector, img_color);
+            std::vector<Object> objects = process_image(detector, img_color, img_depth, img_intrinsics);
+            std::shared_ptr<ImgAnalyze> obj_msg;
+            int i = 0;
+            for (Object obj: objects)
+            {
+                obj_msg.object[i] = obj;
+                i++;
+            }
+            auto time = monotonic_now_ns();
+            obj_msg.header.stamp.sec = time / 1'000'000'000LL;
+            obj_msg.header.stamp.nanosec = time % 1'000'000'000LL;
+
+            pub->publish(obj_msg);
 #endif
 
             // ── Step 6: release chun  k back to iceoryx pool ────────────────────

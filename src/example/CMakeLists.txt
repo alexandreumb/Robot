@@ -67,7 +67,7 @@ install(PROGRAMS
 )
 
 add_executable(camera_sub_iceoryx_nativo src/camera_sub_iceoryx_nativo.cpp)
-ament_target_dependencies(camera_sub_iceoryx_nativo rclcpp OpenCV fixed_size_msgs)
+ament_target_dependencies(camera_sub_iceoryx_nativo rclcpp OpenCV msgs)
 target_link_libraries(camera_sub_iceoryx_nativo iceoryx_hoofs::iceoryx_hoofs iceoryx_posh::iceoryx_posh CUDA::cudart Yolo_Tensorrt)  # Link the YoloTensorrt library
 target_include_directories(camera_sub_iceoryx_nativo PRIVATE
     /home/robotics4farmers/Dev/Robot/src/example

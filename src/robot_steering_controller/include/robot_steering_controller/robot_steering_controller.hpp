@@ -5,7 +5,7 @@
 
   #include "robot_steering_controller/robot_steering_controller_parameters.hpp"
   #include "robot_steering_controller/visibility_control.h"
-  #include "controller_interface/chainable_controller_interface.hpp"
+  #include "controller_interface/controller_interface.hpp"
   #include "hardware_interface/handle.hpp"
   #include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
   #include "rclcpp_lifecycle/state.hpp"
@@ -19,33 +19,77 @@
   #include "nav_msgs/msg/odometry.hpp"
   #include "tf2_msgs/msg/tf_message.hpp"
   #include "msgs/msg/img_analyze_msg.hpp"
-  #include "msgs/msg/velocity.hpp"
+  #include "msgs/msg/teleop_command.hpp"
   #include "msgs/msg/object_struct.hpp"
 
   #include <utility>
+  #include <limits>
 
   namespace robot_steering_controller
   {
-  // name constants for state interfaces
-  static constexpr size_t POS_X = 35;
-  static constexpr size_t POS_Y = 36;
-  static constexpr size_t POS_Z = 37;
-  static constexpr size_t VEL_NORTH = 38;
-  static constexpr size_t VEL_EAST = 39;
-  static constexpr size_t HEADING = 40;
-  static constexpr size_t NEXT_POS_X = 41;
-  static constexpr size_t NEXT_POS_Y = 42;
-  static constexpr size_t NEXT_POS_Z = 43;
-    
-  // name constants for command interfaces
-  static constexpr size_t CMD_TRACTION_WHEELS = 0;
-  static constexpr size_t CMD_STEERING = 1;
+  
+  enum StateInterfaces
+  {
+    //WHEELS
+    FRONT_LEFT_TEMP,
+    FRONT_RIGHT_TEMP,
+    FRONT_TEMP_TIME,
+    FRONT_LEFT_VEL,
+    FRONT_RIGHT_VEL,
+    FRONT_VEL_TIME,
+    FRONT_LEFT_THROTTLE,
+    FRONT_RIGHT_THROTTLE,
+    FRONT_THROTTLE_TIME,
+    FRONT_LEFT_REVERSE,
+    FRONT_RIGHT_REVERSE,
+    FRONT_REVERSE_TIME,
+    FRONT_LEFT_BRAKE,
+    FRONT_RIGHT_BRAKE,
+    FRONT_BRAKE_TIME,
+    REAR_LEFT_TEMP,
+    REAR_RIGHT_TEMP,
+    REAR_TEMP_TIME,
+    REAR_LEFT_VEL,
+    REAR_RIGHT_VEL,
+    REAR_VEL_TIME,
+    REAR_LEFT_THROTTLE,
+    REAR_RIGHT_THROTTLE,
+    REAR_THROTTLE_TIME,
+    REAR_LEFT_REVERSE,
+    REAR_RIGHT_REVERSE,
+    REAR_REVERSE_TIME,
+    REAR_LEFT_BRAKE,
+    REAR_RIGHT_BRAKE,
+    REAR_BRAKE_TIME,
+    //STEERING
+    STEERING_ANGLE,
+    STEERING_ANGLE_TIME,
+    STEERING_TORQUE_HIGH,
+    STEERING_TORQUE_LOW,
+    STEERING_TORQUE_TIME,
+    //GPS
+    LONGITUDE,
+    LATITUDE,
+    HEIGHT,
+    VEL_NORTH,
+    VEL_EAST,
+    HEADING,
+    NEXT_POS_X,
+    NEXT_POS_Y,
+    NEXT_POS_Z
+  };
+  
+  enum CommandInterfaces
+  {
+    CMD_VELOCITY,
+    CMD_STEERING
+  };
 
   static constexpr size_t NR_STATE_ITFS = 44;
   static constexpr size_t NR_CMD_ITFS = 2;
   static constexpr size_t NR_REF_ITFS = 2;
 
-  class RobotSteeringController : public controller_interface::ChainableControllerInterface
+  class RobotSteeringController : public controller_interface::ControllerInterface
   {
   public:
     RobotSteeringController();
@@ -68,30 +112,24 @@
     const rclcpp_lifecycle::State & previous_state) override;
 
     ROBOT_STEERING_CONTROLLER__VISIBILITY_PUBLIC controller_interface::return_type
-    update_and_write_commands(const rclcpp::Time & time, const rclcpp::Duration & period) override;
-
-    ROBOT_STEERING_CONTROLLER__VISIBILITY_PUBLIC controller_interface::return_type
-    update_reference_from_subscribers() override;
+    update(const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
     using ControllerTwistReferenceMsg = geometry_msgs::msg::TwistStamped;
     using ControllerStateMsgOdom = nav_msgs::msg::Odometry;
     using ControllerStateMsgTf = tf2_msgs::msg::TFMessage;
     using SteeringControllerStateMsg = control_msgs::msg::SteeringControllerStatus;
     using ImgAnalyzeMsg = msgs::msg::ImgAnalyzeMsg;
-    using Velocity = msgs::msg::Velocity;
+    using TeleopCommand = msgs::msg::TeleopCommand;
     using ObjectStruct = msgs::msg::ObjectStruct;
 
-  protected:
-    controller_interface::CallbackReturn set_interface_numbers(size_t nr_state_itfs, size_t nr_cmd_itfs, size_t nr_ref_itfs);
-  
-    std::vector<hardware_interface::CommandInterface> on_export_reference_interfaces() override;
+  protected:  
     bool update_odometry(const rclcpp::Duration & period);
 
     realtime_tools::RealtimeBuffer<std::shared_ptr<ImgAnalyzeMsg>> input_ref_img_;
-    realtime_tools::RealtimeBuffer<std::shared_ptr<Velocity>> input_ref_vel_;
+    realtime_tools::RealtimeBuffer<std::shared_ptr<TeleopCommand>> input_ref_teleop_;
 
     rclcpp::Subscription<ImgAnalyzeMsg>::SharedPtr ref_subscriber_image_ = nullptr;
-    rclcpp::Subscription<Velocity>::SharedPtr ref_subscriber_velocity_ = nullptr;
+    rclcpp::Subscription<TeleopCommand>::SharedPtr ref_subscriber_teleopcommand_ = nullptr;
     rclcpp::Duration ref_timeout_ = rclcpp::Duration::from_seconds(0.0);  // 0ms
 
     using ControllerStatePublisherOdom = realtime_tools::RealtimePublisher<ControllerStateMsgOdom>;
@@ -108,8 +146,10 @@
     
     steering_odometry::SteeringOdometry odometry_;
     
-    double last_linear_velocity_{ 0.0 };
-    double last_angular_velocity_{ 0.0 };
+    double last_velocity_{0.0};
+    double last_angle_{0.0};
+    double reference_velocity_{std::numeric_limits<double>::quiet_NaN()};
+    double reference_angle_{Nstd::numeric_limits<double>::quiet_NaN()};
 
     std::shared_ptr<robot_steering_controller::ParamListener> robot_param_listener_;
     robot_steering_controller::Params robot_params_;
@@ -118,24 +158,23 @@
     std::vector<std::string> axes_names_;
     std::vector<std::string> direction_names_;
 
-    int id{0};
+    int tracked_object_id_{0};
 
     // name constants for state interfaces
-    size_t nr_state_itfs_{3};
+    size_t nr_state_itfs_{0};
     // name constants for command interfaces
-    size_t nr_cmd_itfs_{2};
-    // name constants for reference interfaces
-    size_t nr_ref_itfs_{3};
+    size_t nr_cmd_itfs_{0};
 
   private:
+    void halt();
+
     ROBOT_STEERING_CONTROLLER__VISIBILITY_LOCAL void reference_callback(
       const std::shared_ptr<ImgAnalyzeMsg> msg);    
     
-    ROBOT_STEERING_CONTROLLER__VISIBILITY_LOCAL void reference_velocity(
-      const std::shared_ptr<Velocity> msg);
+    ROBOT_STEERING_CONTROLLER__VISIBILITY_LOCAL void reference_teleop(
+      const std::shared_ptr<TeleopCommand> msg);
   };
 
-  
   }  // namespace robot_steering_controller
 
   #endif  // ROBOT_STEERING_CONTROLLER__ROBOT_STEERING_CONTROLLER_HPP_
