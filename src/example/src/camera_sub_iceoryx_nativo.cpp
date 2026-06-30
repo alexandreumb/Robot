@@ -27,6 +27,9 @@
 #include <limits>
 #include <thread>
 #include <rclcpp/rclcpp.hpp>
+#include <mutex>
+#include <condition_variable>
+#include <optional>
 
 using Image8Mb = msgs::msg::Image8Mb;
 using ImgAnalyze = msgs::msg::ImgAnalyzeMsg;
@@ -45,7 +48,6 @@ static const std::string OUTPUT_DIR = std::string(getenv("HOME")) + "/latency_da
 #define USE_CLOCK_MONOTONIC  1
 #define USE_RT_SCHEDULING    0
 #define USE_CPU_AFFINITY     0
-#define USE_BUSY_WAIT        1   // 0 = WaitSet-like blocking, 1 = tight spin
 #define REALSENSE            1
 
 constexpr int      SUBSCRIBER_CORE = 3;
@@ -53,19 +55,23 @@ constexpr int      RT_PRIORITY     = 80;
 constexpr int      IMG_TYPE_COLOR    = CV_8UC3;         // bgr8, 3 bytes per pixel
 constexpr int      IMG_TYPE_DEPTH    = CV_16UC1;         
 
+// ── struct ──────────────────────────────────────────────────────
+struct Frame
+{
+    cv::Mat color;
+    cv::Mat depth;
+    image_intrinsics intrinsics;
+    int64_t timestamp;
+};
+
 // ── globals ───────────────────────────────────────────────────────────────────
 std::atomic<bool> stop{false};
+std::mutex write_mutex;
+std::optional<Frame> latest_frame;
+std::condition_variable cv;
 
 static double   total_full_us     = 0.0;
 static double   total_transport_us = 0.0;
-
-// ── struct ──────────────────────────────────────────────────────
-struct Detection
-{
-    cv::Rect box;
-    int class_id;
-    float confidence;
-};
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 void signal_handler(int) { stop = true; }
@@ -145,17 +151,9 @@ std::vector<Object> process_image(YoloV8& detector, const cv::Mat& img_color, co
 {
     auto max_detected = 0.2f;
     std::vector<Object> objects = detector.detectObjects(img_color);
-    if (objects.size() > 1)
-    {
-        for (Object &object :objects) 
-        {
-            std::cout << "Label of the object: " << object.label << std::endl;
-        }
-    }
-
     auto ret = detector.extractObjects(img_depth, objects, img_intrinsics, max_detected);
 
-    return ret
+    return ret;
 }
 #endif
 
@@ -167,7 +165,7 @@ int main(int argc, char ** argv)
 #if defined(__aarch64__) || defined(_M_ARM64)
     const std::string engine_file_path = "/home/robotics4farmers/Dev/Robot/src/example/Yolo_Tensorrt/r4f_jetson_yolov8m_seg.onnx";
 #elif defined(__x86_64__) || defined(_M_X64)
-    const std::string onnxModelPath = "/home/robotics4farmers/Dev/Robot/src/example/Yolo_Tensorrt/r4f_pc_yolov8m_seg.onnx";
+    const std::string engine_file_path = "/home/robotics4farmers/Dev/Robot/src/example/Yolo_Tensorrt/r4f_pc_yolov8m_seg.onnx";
 #endif
 
 #if GPU
@@ -185,7 +183,6 @@ int main(int argc, char ** argv)
 
     configure_thread();
     
-    std::cout << "After init " << std::endl;
     // ── native iceoryx runtime init ───────────────────────────────────────────
     // Must be called once per process. The runtime name must be unique.
     // This connects directly to RouDi shared memory — same RouDi that
@@ -207,6 +204,7 @@ int main(int argc, char ** argv)
             return opts;
         }()
     );
+
     std::vector<double> full_us_vec;
     std::vector<double> transport_us_vec;
     full_us_vec.reserve(10000);
@@ -217,40 +215,53 @@ int main(int argc, char ** argv)
     uint64_t frame_count        = 0;
 
     const std::string csv_path = make_csv_path();
-    RCLCPP_INFO(node->get_logger(),
-        "FastDDS subscriber started — saving to %s", csv_path.c_str());
-
-    RCLCPP_INFO(node->get_logger(),
-        "Native iceoryx subscriber started — service: %s / %s / %s",
-        IOX_SERVICE, IOX_INSTANCE, IOX_EVENT);
-
     mlockall(MCL_CURRENT | MCL_FUTURE);
+
+// Processing thread
+    std::thread process_image_and_pub([&] ()
+    {
+        while (!stop)
+        {
+            Frame current_frame;
+            {
+                std::unique_lock<std::mutex> lock(write_mutex);
+                cv.wait(lock, [&]{ return latest_frame.has_value() || stop;});
+
+                if (stop)
+                    break;
+
+                current_frame = std::move(*latest_frame);
+                latest_frame.reset();
+            }
+#if GPU
+            std::vector<Object> objects = process_image(detector, current_frame.color, current_frame.depth, current_frame.intrinsics);
+            ImgAnalyze obj_msg;
+            for (size_t i = 0; i < objects.size() && i < obj_msg.object.size(); ++i)
+            {
+                obj_msg.object[i] = objects[i];
+            }
+            obj_msg.header.stamp.sec = current_frame.timestamp / 1'000'000'000LL;
+            obj_msg.header.stamp.nanosec = current_frame.timestamp % 1'000'000'000LL;
+
+            pub->publish(obj_msg);
+#endif
+        }
+    });
+
     // ── main loop ─────────────────────────────────────────────────────────────
     while (!stop && rclcpp::ok())
     {
-#if USE_BUSY_WAIT
         // tight spin — zero wakeup latency, burns one CPU core
         iox_sub.take()
         .and_then([&](const void * userPayload) {
-
-#else
-        // blocking wait — yields CPU until data arrives
-        // iceoryx WaitSet equivalent for untyped subscriber
-        iox_sub.take()
-        .and_then([&](const void * userPayload) {
-
-#endif
             // ── Step 1: timestamp receive — userPayload is direct shm pointer ─
 #if USE_CLOCK_MONOTONIC
             const int64_t receive_ns = monotonic_now_ns();
 #else
             const int64_t receive_ns = node->now().nanoseconds();
 #endif
-            // ── Step 2: cast to message type — zero copy, no memcpy ───────────
-            // userPayload points directly into iceoryx shared memory segment.
-            // The publisher wrote Image8Mb in-place via borrow_loaned_message.
-            const auto * msg = static_cast<const Image8Mb *>(userPayload);
 
+            const auto * msg = static_cast<const Image8Mb *>(userPayload);
             // ── Step 3: measure latency ───────────────────────────────────────
             const double full_us = static_cast<double>(
                 receive_ns - msg->timestamp) / 1000.0;
@@ -284,29 +295,26 @@ int main(int argc, char ** argv)
             );
 
             image_intrinsics img_intrinsics;
-            img_intrinsics.width = msg->image_intrinsics.width;  
-            img_intrinsics.height = msg->image_intrinsics.height;
-            img_intrinsics.fx = msg->image_intrinsics.fx;
-            img_intrinsics.fy = msg->image_intrinsics.fy;
-            img_intrinsics.ppx = msg->image_intrinsics.ppx;
-            img_intrinsics.ppy = msg->image_intrinsics.ppy;
-            img_intrinsics.depth_units = msg->image_intrinsics.depth_units;
-            // ── Step 5: process ───────────────────────────────────────────────
-#if GPU
-            std::vector<Object> objects = process_image(detector, img_color, img_depth, img_intrinsics);
-            std::shared_ptr<ImgAnalyze> obj_msg;
-            int i = 0;
-            for (Object obj: objects)
-            {
-                obj_msg.object[i] = obj;
-                i++;
-            }
-            auto time = monotonic_now_ns();
-            obj_msg.header.stamp.sec = time / 1'000'000'000LL;
-            obj_msg.header.stamp.nanosec = time % 1'000'000'000LL;
+            img_intrinsics.width        = msg->image_intrinsics.width;
+            img_intrinsics.height       = msg->image_intrinsics.height;
+            img_intrinsics.fx           = msg->image_intrinsics.fx;
+            img_intrinsics.fy           = msg->image_intrinsics.fy;
+            img_intrinsics.ppx          = msg->image_intrinsics.ppx;
+            img_intrinsics.ppy          = msg->image_intrinsics.ppy;
+            img_intrinsics.depth_units  = msg->image_intrinsics.depth_units;
 
-            pub->publish(obj_msg);
-#endif
+            {
+                std::lock_guard<std::mutex> lock(write_mutex);
+
+                Frame frame;    
+                frame.color = img_color.clone();
+                frame.depth = img_depth.clone();
+                frame.intrinsics = img_intrinsics;
+                frame.timestamp = msg->timestamp;
+
+                latest_frame = std::move(frame);
+            }
+            cv.notify_one();
 
             // ── Step 6: release chun  k back to iceoryx pool ────────────────────
             // Must be called — otherwise the pool exhausts and publisher stalls.
@@ -346,6 +354,9 @@ int main(int argc, char ** argv)
     }
     
     RCLCPP_INFO(node->get_logger(), "Shutting down native iceoryx subscriber");
+    stop = true;
+    cv.notify_all();
+    process_image_and_pub.join();
     rclcpp::shutdown();
     return 0;
 }
