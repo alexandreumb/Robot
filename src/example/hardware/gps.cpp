@@ -49,7 +49,7 @@ void GpsHardware::openSocket()
         char filename[64];
         time_t rawtime = time(NULL);
         struct tm* timeinfo = localtime(&rawtime);
-        snprintf(filename, "ANPP_waypoints_%02d-%02d-%02d-%02d-%02d-%02d.anpp", timeinfo->tm_year + 1900, timeinfo->tm_mon + 1, timeinfo->tm_mday, timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
+        snprintf(filename, sizeof(filename), "ANPP_waypoints_%02d-%02d-%02d-%02d-%02d-%02d.anpp", timeinfo->tm_year + 1900, timeinfo->tm_mon + 1, timeinfo->tm_mday, timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
 
         std::string filepath = std::string(output_dir) + "/" + filename;
         log_file_ = fopen(filepath.c_str(), "wb");
@@ -57,7 +57,7 @@ void GpsHardware::openSocket()
         if (log_file_ == nullptr) 
         {
             RCLCPP_ERROR(get_logger(), "Failed to open log file: %s", filepath.c_str());
-            return
+            return;
         } 
         else 
         {
@@ -91,9 +91,13 @@ void GpsHardware::openSocket()
         return;
     }
 
-    if (connect(socket_fd_, addr->ai_addr, addr->ai_addrlen) < 0) 
-    {
-        RCLCPP_ERROR(get_logger(), "Failed to connect to %s:%d", ip_.c_str(), port_);
+    if (connect(socket_fd_, addr->ai_addr, addr->ai_addrlen) < 0) {
+        RCLCPP_ERROR(
+            get_logger(),
+            "Failed to connect to %s:%d : %s",
+            ip_.c_str(),
+            port_,
+            strerror(errno));
         close(socket_fd_);
         socket_fd_ = -1;
         if (log_file_ != nullptr)
@@ -132,13 +136,15 @@ void GpsHardware::ethernetLoop()
                 
         if (bytes_received <= 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                RCLCPP_DEBUG(get_logger(), "Socket read timeout, no data received");
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 continue;
+            } else if (bytes_received == 0) {
+                RCLCPP_ERROR(get_logger(), "Socket closed by remote host");
+                break;
             } else {
                 RCLCPP_ERROR(get_logger(), "Socket read error: %s", strerror(errno));
+                break;
             }
-            break;
         }
 
         if (!read_)
@@ -152,6 +158,7 @@ void GpsHardware::ethernetLoop()
                     flush_counter_ = 0;
                 }
             }
+            flush_counter_++;
         }
 
         an_decoder_increment(&an_decoder_, bytes_received);
@@ -239,6 +246,9 @@ void GpsHardware::ethernetLoop()
 
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
+
+    RCLCPP_ERROR(get_logger(), "Ethernet loop exiting — GPS data stream has stopped!");
+    running_ = false;
 }
 
 //////////////////////////////////////////////////////////////
@@ -345,7 +355,7 @@ hardware_interface::CallbackReturn GpsHardware::on_activate(
             RCLCPP_ERROR(get_logger(), "No waypoints found in file");
             return CallbackReturn::ERROR;
         }
-
+    }
 #if GPS_ACTIVE
     // Live mode — open socket and start thread as before
     openSocket();
@@ -442,22 +452,20 @@ hardware_interface::return_type GpsHardware::read(
     {
         if (!isRefInit) 
         {
-            if (fix_type == gnss_fix_type_e::gnss_fix_rtk_fixed) 
+            geodetic_converter_.initialiseReference(copy.latitude, copy.longitude, copy.height);
+            geodetic_converter_.geodetic2Ned(copy.latitude, copy.longitude, copy.height,
+                &north, &east, &down);
+            
+            if (getNextReferencePoint({north, east, down}, next_waypoint_))
             {
-                geodetic_converter_.initialiseReference(copy.latitude, copy.longitude, copy.height);
-                geodetic_converter_.geodetic2Ned(copy.latitude, copy.longitude, copy.height,
-                    &north, &east, &down);
-                
-                if (getNextReferencePoint({north, east, down}, next_waypoint_))
-                {
-                    RCLCPP_INFO(get_logger(), "Initial reference set to: north=%.2f east=%.2f down=%.2f", north, east, down);
-                    isRefInit = true;
-                }
-                else
-                {
-                    RCLCPP_WARN(get_logger(), "No valid initial waypoint found. Waiting for a valid reference point...");
-                }
+                RCLCPP_INFO(get_logger(), "Initial reference set to: north=%.2f east=%.2f down=%.2f", north, east, down);
+                isRefInit = true;
             }
+            else
+            {
+                RCLCPP_WARN(get_logger(), "No valid initial waypoint found. Waiting for a valid reference point...");
+            }
+
         }
         else 
         {
@@ -467,7 +475,7 @@ hardware_interface::return_type GpsHardware::read(
                 RCLCPP_INFO(get_logger(), "Next waypoint: north=%.2f east=%.2f down=%.2f", next_waypoint_[0], next_waypoint_[1], next_waypoint_[2]);
             }
             else
-            {next_waypoint_
+            {
                 RCLCPP_INFO(get_logger(), "No more waypoints found. Holding position at: north=%.2f east=%.2f down=%.2f", north, east, down);
             }
         }

@@ -38,9 +38,18 @@ namespace utility
   {
     for (size_t i = 0; i < msg->object.size(); ++i)
     {
-      msg->object[i].name = "";
-      msg->object[i].distance = std::numeric_limits<double>::quiet_NaN();
-      msg->object[i].confidence = std::numeric_limits<double>::quiet_NaN();
+      msg->object[i].label = std::numeric_limits<double>::quiet_NaN();
+      msg->object[i].probability = std::numeric_limits<double>::quiet_NaN();
+      msg->object[i].box.x = std::numeric_limits<double>::quiet_NaN();
+      msg->object[i].box.y = std::numeric_limits<double>::quiet_NaN();
+      msg->object[i].box.width = std::numeric_limits<double>::quiet_NaN();
+      msg->object[i].box.height = std::numeric_limits<double>::quiet_NaN();
+      msg->object[i].kps.clear();
+      msg->object[i].point.pose_x = std::numeric_limits<double>::quiet_NaN();
+      msg->object[i].point.pose_y = std::numeric_limits<double>::quiet_NaN();
+      msg->object[i].point3d.x = std::numeric_limits<double>::quiet_NaN();
+      msg->object[i].point3d.y = std::numeric_limits<double>::quiet_NaN();
+      msg->object[i].point3d.z = std::numeric_limits<double>::quiet_NaN();
     }
     msg->header.stamp = node->now();
   }
@@ -429,7 +438,17 @@ RobotSteeringController::RobotSteeringController()
   {
     auto current_data = *(input_ref_teleop_.readFromRT());
     auto current_objects = *(input_ref_img_.readFromRT());
-    
+
+    if (current_objects->has_object)
+    {
+      RCLCPP_INFO(get_node()->get_logger(), "Received new reference image with object label: %f", current_objects->object[0].label);
+      RCLCPP_INFO(get_node()->get_logger(), "Received new reference image with object probability: %f", current_objects->object[0].probability);
+      RCLCPP_INFO(get_node()->get_logger(), "Received new reference image with object box x: %f", current_objects->object[0].box.x);
+      RCLCPP_INFO(get_node()->get_logger(), "Received new reference image with object box y: %f", current_objects->object[0].box.y);
+      RCLCPP_INFO(get_node()->get_logger(), "Received new reference image with object box width: %f", current_objects->object[0].box.width);
+      RCLCPP_INFO(get_node()->get_logger(), "Received new reference image with object box height: %f", current_objects->object[0].box.height);
+    }
+
     if (!std::isnan(current_data->velocity) && !std::isnan(current_data->angle))
     {
       reference_velocity_ = current_data->velocity;
@@ -547,10 +566,8 @@ RobotSteeringController::RobotSteeringController()
     }
     const auto age_of_last_command = get_node()->now() - msg->header.stamp;
 
-    if (ref_timeout_ == rclcpp::Duration::from_seconds(0) || age_of_last_command <= ref_timeout_)
-    {
+
       input_ref_img_.writeFromNonRT(msg);
-    }
   }
 
   void RobotSteeringController::reference_teleop(

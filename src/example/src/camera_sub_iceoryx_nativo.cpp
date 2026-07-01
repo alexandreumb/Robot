@@ -39,7 +39,7 @@ using ImgAnalyze = msgs::msg::ImgAnalyzeMsg;
 // type_name  = package/msg/Type  → "fixed_size_msgs/msg/Image8Mb"
 // topic_name = /camera
 // event      = "data"            (always for ROS2)
-static constexpr char IOX_SERVICE[]  = "fixed_size_msgs/msg/Image8Mb";
+static constexpr char IOX_SERVICE[]  = "msgs/msg/Image8Mb";
 static constexpr char IOX_INSTANCE[] = "/camera";
 static constexpr char IOX_EVENT[]    = "data";
 static const std::string OUTPUT_DIR = std::string(getenv("HOME")) + "/latency_data";
@@ -68,7 +68,7 @@ struct Frame
 std::atomic<bool> stop{false};
 std::mutex write_mutex;
 std::optional<Frame> latest_frame;
-std::condition_variable cv;
+std::condition_variable frame_cv;
 
 static double   total_full_us     = 0.0;
 static double   total_transport_us = 0.0;
@@ -225,7 +225,7 @@ int main(int argc, char ** argv)
             Frame current_frame;
             {
                 std::unique_lock<std::mutex> lock(write_mutex);
-                cv.wait(lock, [&]{ return latest_frame.has_value() || stop;});
+                frame_cv.wait(lock, [&]{ return latest_frame.has_value() || stop;});
 
                 if (stop)
                     break;
@@ -233,18 +233,39 @@ int main(int argc, char ** argv)
                 current_frame = std::move(*latest_frame);
                 latest_frame.reset();
             }
-#if GPU
-            std::vector<Object> objects = process_image(detector, current_frame.color, current_frame.depth, current_frame.intrinsics);
+        
             ImgAnalyze obj_msg;
-            for (size_t i = 0; i < objects.size() && i < obj_msg.object.size(); ++i)
+            obj_msg.has_object = 0;
+#if GPU 
+            std::vector<Object> objects = process_image(detector, current_frame.color, current_frame.depth, current_frame.intrinsics);
+            
+            if (objects.size() > 0)
             {
-                obj_msg.object[i] = objects[i];
-            }
+                RCLCPP_INFO(node->get_logger(), "%lu objects detected in the current frame.", objects.size());
+                obj_msg.has_object = 1;
+                obj_msg.object.resize(objects.size());
+                for (size_t i = 0; i < objects.size() && i < obj_msg.object.size(); ++i)
+                {
+                    obj_msg.object[i].label = objects[i].label;
+                    obj_msg.object[i].probability = objects[i].probability;
+                    obj_msg.object[i].box.x = objects[i].rect.x;
+                    obj_msg.object[i].box.y = objects[i].rect.y;
+                    obj_msg.object[i].box.width = objects[i].rect.width;
+                    obj_msg.object[i].box.height = objects[i].rect.height;
+                    obj_msg.object[i].kps = objects[i].kps;
+                    obj_msg.object[i].point.pose_x = objects[i].Pose2D.x;
+                    obj_msg.object[i].point.pose_y = objects[i].Pose2D.y;
+                    obj_msg.object[i].point3d.x = objects[i].Pose3D[0];
+                    obj_msg.object[i].point3d.y = objects[i].Pose3D[1];
+                    obj_msg.object[i].point3d.z = objects[i].Pose3D[2];
+                }
+            }     
+                  
+#endif
             obj_msg.header.stamp.sec = current_frame.timestamp / 1'000'000'000LL;
             obj_msg.header.stamp.nanosec = current_frame.timestamp % 1'000'000'000LL;
 
             pub->publish(obj_msg);
-#endif
         }
     });
 
@@ -295,17 +316,16 @@ int main(int argc, char ** argv)
             );
 
             image_intrinsics img_intrinsics;
-            img_intrinsics.width        = msg->image_intrinsics.width;
-            img_intrinsics.height       = msg->image_intrinsics.height;
-            img_intrinsics.fx           = msg->image_intrinsics.fx;
-            img_intrinsics.fy           = msg->image_intrinsics.fy;
-            img_intrinsics.ppx          = msg->image_intrinsics.ppx;
-            img_intrinsics.ppy          = msg->image_intrinsics.ppy;
-            img_intrinsics.depth_units  = msg->image_intrinsics.depth_units;
+            img_intrinsics.width = msg->image_intrinsics.width;  
+            img_intrinsics.height = msg->image_intrinsics.height;
+            img_intrinsics.fx = msg->image_intrinsics.fx;
+            img_intrinsics.fy = msg->image_intrinsics.fy;
+            img_intrinsics.ppx = msg->image_intrinsics.ppx;
+            img_intrinsics.ppy = msg->image_intrinsics.ppy;
+            img_intrinsics.depth_units = msg->image_intrinsics.depth_units;
 
             {
                 std::lock_guard<std::mutex> lock(write_mutex);
-
                 Frame frame;    
                 frame.color = img_color.clone();
                 frame.depth = img_depth.clone();
@@ -314,7 +334,7 @@ int main(int argc, char ** argv)
 
                 latest_frame = std::move(frame);
             }
-            cv.notify_one();
+            frame_cv.notify_one();
 
             // ── Step 6: release chun  k back to iceoryx pool ────────────────────
             // Must be called — otherwise the pool exhausts and publisher stalls.
@@ -355,7 +375,7 @@ int main(int argc, char ** argv)
     
     RCLCPP_INFO(node->get_logger(), "Shutting down native iceoryx subscriber");
     stop = true;
-    cv.notify_all();
+    frame_cv.notify_all();
     process_image_and_pub.join();
     rclcpp::shutdown();
     return 0;

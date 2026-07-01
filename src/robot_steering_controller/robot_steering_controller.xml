@@ -1,6 +1,6 @@
 <library path="robot_steering_controller">
   <class name="robot_steering_controller/RobotSteeringController"
-         type="robot_steering_controller::RobotSteeringController" base_class_type="controller_interface::ChainableControllerInterface">
+         type="robot_steering_controller::RobotSteeringController" base_class_type="controller_interface::ControllerInterface">
   <description>
     Steering controller for Robot (car-like) kinematics with two traction and two steering joints.
   </description>

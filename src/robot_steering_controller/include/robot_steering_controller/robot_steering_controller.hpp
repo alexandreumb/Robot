@@ -149,7 +149,7 @@
     double last_velocity_{0.0};
     double last_angle_{0.0};
     double reference_velocity_{std::numeric_limits<double>::quiet_NaN()};
-    double reference_angle_{Nstd::numeric_limits<double>::quiet_NaN()};
+    double reference_angle_{std::numeric_limits<double>::quiet_NaN()};
 
     std::shared_ptr<robot_steering_controller::ParamListener> robot_param_listener_;
     robot_steering_controller::Params robot_params_;

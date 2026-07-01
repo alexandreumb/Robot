@@ -1,7 +1,6 @@
-string name
-float64 distance
-float64 confidence
-float64 x
-float64 y
-float64 width
-float64 height
+int32 label
+float64 probability
+BoundingBox box
+float32[] kps
+Point2D point
+geometry_msgs/Point32 point3d

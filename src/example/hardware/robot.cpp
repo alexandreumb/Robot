@@ -13,8 +13,8 @@
 namespace example
 {
 
-#define SEND_CAN_COMMANDS 1
-#define CAN_AVAILABLE 1
+#define SEND_CAN_COMMANDS 0 
+#define CAN_AVAILABLE 0
 
 void Robot4FarmersHardware::EncodeControl(const ControlData& data, uint8_t* buffer) {
     // Calculate scaling limits for direction (int16_t)
@@ -98,7 +98,7 @@ bool Robot4FarmersHardware::sendFrame(uint32_t canId, const uint8_t *data, uint8
     const ssize_t n = ::write(can_socket_fd_, &frame, sizeof(frame));
     if (n != static_cast<ssize_t>(sizeof(frame)))
     {
-        RCLCPP_INFO(get_logger(), "No data");
+        //RCLCPP_INFO(get_logger(), "No data");
     }
 
     return true;
@@ -469,7 +469,7 @@ hardware_interface::return_type Robot4FarmersHardware::write(
                 prev_reverse = reverse;
             }
             
-            RCLCPP_INFO(get_logger(), "velocity to send: %f", joint.command.velocity);
+            //RCLCPP_INFO(get_logger(), "velocity to send: %f", joint.command.velocity);
             EncodeControl(cd, data.data());
             auto can_dlc = static_cast<uint8_t>(data.size());
             auto can_id = IDJetson(Control);

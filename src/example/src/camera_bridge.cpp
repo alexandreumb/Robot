@@ -1,4 +1,4 @@
-#include "fixed_size_msgs/msg/image8_mb.hpp"
+#include "msgs/msg/image8_mb.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include <opencv4/opencv2/opencv.hpp>
 #include "sensor_msgs/msg/image.hpp"
@@ -14,10 +14,10 @@
 #include <sys/mman.h>
 #include <thread>
 
-using Image8Mb = fixed_size_msgs::msg::Image8Mb;
+using Image8Mb = msgs::msg::Image8Mb;
 
 // ── service description — derived from rmw_iceoryx name conversion ────────────
-static constexpr char IOX_SERVICE[]  = "fixed_size_msgs/msg/Image8Mb";
+static constexpr char IOX_SERVICE[]  = "msgs/msg/Image8Mb";
 static constexpr char IOX_INSTANCE[] = "/camera";
 static constexpr char IOX_EVENT[]    = "data";
 
@@ -91,9 +91,9 @@ int main(int argc, char ** argv)
         "  Input:  iceoryx %s / %s / %s",
         IOX_SERVICE, IOX_INSTANCE, IOX_EVENT);
     RCLCPP_INFO(node->get_logger(),
-        "  Output: /camera/depth  (fixed_size_msgs/Image8Mb, FastDDS)");
+        "  Output: /camera/depth  (msgs/Image8Mb, FastDDS)");
     RCLCPP_INFO(node->get_logger(),
-        "  Output: /camera_bridge (fixed_size_msgs/Image8Mb, FastDDS)");
+        "  Output: /camera_bridge (msgs/Image8Mb, FastDDS)");
  
 
     // -- native untyped subscriber ---------------------------------------------    
@@ -105,7 +105,7 @@ int main(int argc, char ** argv)
     // -- native untyped subscriber ---------------------------------------------
     // UntypedSubscriber gives us a raw void* into shared memory — zero copy.
     // The service description must match exactly what rmw_iceoryx registered:
-    //   service  = type_name  = "fixed_size_msgs/msg/Image8Mb"
+    //   service  = type_name  = "msgs/msg/Image8Mb"
     //   instance = topic_name = "/camera"
     //   event    = "data"     (always for ROS2 topics in rmw_iceoryx)
     iox::popo::UntypedSubscriber iox_sub(

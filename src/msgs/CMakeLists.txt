@@ -20,13 +20,17 @@ find_package(ament_cmake REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ObjectStruct.msg"
   "msg/ImgAnalyzeMsg.msg"
   "msg/Image8Mb.msg"
-  "msg/Velocity.msg"
-  DEPENDENCIES builtin_interfaces std_msgs
+  "msg/TeleopCommand.msg"
+  "msg/BoundingBox.msg"
+  "msg/Point2D.msg"
+  "msg/ImageIntrinsics.msg"
+  DEPENDENCIES builtin_interfaces std_msgs geometry_msgs  
   ADD_LINTER_TESTS
 )
 

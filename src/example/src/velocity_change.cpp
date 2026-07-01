@@ -16,13 +16,6 @@ int angle{0};
 struct termios oldt, newt;
 std::mutex reader_mutex;    
 
-//Signal Handler
-void signal_handler(int) 
-{ 
-    disableRawMode();
-    running = false; 
-}
-
 void enableRawMode()
 {
     // Get current terminal settings
@@ -42,6 +35,13 @@ void disableRawMode()
     tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
 }
 
+//Signal Handler
+void signal_handler(int) 
+{ 
+    disableRawMode();
+    running = false; 
+}
+
 inline int64_t monotonic_now_ns()
 {
     struct timespec ts;
@@ -57,20 +57,22 @@ int main(int argc, char ** argv)
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
 
-    auto node = rclcpp::Node::make_shared("velocity_publisher_node");
+    auto node = rclcpp::Node::make_shared("teleop_publisher_node");
 
     auto qos = rclcpp::QoS(1).best_effort().durability_volatile();
-    auto publisher = node->create_publisher<msgs::msg::Velocity>(
+    auto publisher = node->create_publisher<msgs::msg::TeleopCommand>(
         "robot_steering_controller/reference_data", qos);
 
     std::thread pub_thread([&]() {
         while (running) {
-            msgs::msg::Data msg;
+            msgs::msg::TeleopCommand msg;
             msg.header.frame_id = "base_link";
+            int a;
+            int v;
             {
                 std::lock_guard<std::mutex> lock(reader_mutex);
-                auto v = velocity;
-                auto a = angle;
+                v = velocity;
+                a = angle;
             }   
             auto time = monotonic_now_ns();
             msg.header.stamp.sec = time / 1'000'000'000LL;
