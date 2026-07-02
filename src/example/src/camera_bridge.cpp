@@ -22,10 +22,8 @@ static constexpr char IOX_INSTANCE[] = "/camera";
 static constexpr char IOX_EVENT[]    = "data";
 
 // ── options ───────────────────────────────────────────────────────────────────
-#define USE_CLOCK_MONOTONIC  1
 #define USE_RT_SCHEDULING    0
 #define USE_CPU_AFFINITY     0
-#define USE_BUSY_WAIT        1   // 0 = WaitSet-like blocking, 1 = tight spin
 
 constexpr int      SUBSCRIBER_CORE = 3;
 constexpr int      RT_PRIORITY     = 80;
@@ -124,28 +122,15 @@ int main(int argc, char ** argv)
     // ── main loop ─────────────────────────────────────────────────────────────
     while (!stop && rclcpp::ok())
     {
-#if USE_BUSY_WAIT
         // tight spin — zero wakeup latency, burns one CPU core
         iox_sub.take()
         .and_then([&](const void * userPayload) {
-
-#else
-        // blocking wait — yields CPU until data arrives
-        // iceoryx WaitSet equivalent for untyped subscriber
-        iox_sub.take()
-        .and_then([&](const void * userPayload) {
-
-#endif
             // -- Step 2: cast to message type — zero copy, no memcpy -----------
             // userPayload points directly into iceoryx shared memory segment.
             // The publisher wrote Image8Mb in-place via borrow_loaned_message.
             const auto * src = static_cast<const Image8Mb *>(userPayload);
 
             const int64_t time_ns = src->timestamp;
-            // -- publish as sensor_msgs/Image for Nav2 / RViz ------------------
-            // This involves a memcpy of the actual image data (height*step bytes)
-            // but only copies the valid image region, not the full 12MB buffer.
-            // At 640x480x3 = 921600 bytes this is ~46µs — acceptable for a bridge.
             auto ros_img = std::make_unique<sensor_msgs::msg::Image>();
             ros_img->header.stamp.sec = static_cast<int32_t>(time_ns / 1'000'000'000LL);
             ros_img->header.stamp.nanosec = static_cast<int32_t>(time_ns % 1'000'000'000LL);

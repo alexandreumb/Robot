@@ -13,7 +13,7 @@ using Image8Mb = msgs::msg::Image8Mb;
 // ── must match the subscriber setting ────────────────────────────────────────
 // When USE_CLOCK_MONOTONIC = 1 in the subscriber, set it to 1 here too.
 // Both sides must use the same clock or diffs will be meaningless.
-#define USE_CLOCK_MONOTONIC   1
+#define USE_CLOCK_MONOTONIC   0
 #define REALSENSE 1
 
 static constexpr char IOX_SERVICE[]  = "msgs/msg/Image8Mb";
@@ -53,6 +53,10 @@ int main(int argc, char ** argv)
     // ── signal setup ─────────────────────────────────────────────────────────
     std::signal(SIGINT,  signal_handler);
     std::signal(SIGTERM, signal_handler);
+
+    // ── ROS2 init — still needed for logging ─────────────────────────────────
+    rclcpp::init(argc, argv);
+    auto node = std::make_shared<rclcpp::Node>("camera_publisher_node");
 
     iox::runtime::PoshRuntime::initRuntime("camera_publisher_native");
     iox::popo::UntypedPublisher pub({IOX_SERVICE, IOX_INSTANCE, IOX_EVENT});
@@ -149,8 +153,7 @@ int main(int argc, char ** argv)
 #else
                 if (!cap.read(color_frame)) {
                     RCLCPP_WARN(node->get_logger(), "Blank frame — skipping");
-                    // loaned_msg destructor returns chunk to pool automatically
-                    continue;
+                    return;
                 }
 
                 msg->image_intrinsics.width = IMG_WIDTH;

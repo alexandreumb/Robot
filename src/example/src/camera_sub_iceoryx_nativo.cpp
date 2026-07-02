@@ -45,10 +45,11 @@ static constexpr char IOX_EVENT[]    = "data";
 static const std::string OUTPUT_DIR = std::string(getenv("HOME")) + "/latency_data";
 
 // ── options ───────────────────────────────────────────────────────────────────
-#define USE_CLOCK_MONOTONIC  1
+#define USE_CLOCK_MONOTONIC  0
 #define USE_RT_SCHEDULING    0
 #define USE_CPU_AFFINITY     0
 #define REALSENSE            1
+#define SAVE_CSV             1
 
 constexpr int      SUBSCRIBER_CORE = 3;
 constexpr int      RT_PRIORITY     = 80;
@@ -205,10 +206,12 @@ int main(int argc, char ** argv)
         }()
     );
 
+#if SAVE_CSV
     std::vector<double> full_us_vec;
     std::vector<double> transport_us_vec;
     full_us_vec.reserve(10000);
     transport_us_vec.reserve(10000);
+#endif 
 
     double   min_transport_us   = std::numeric_limits<double>::max();
     double   max_transport_us   = 0.0;
@@ -289,9 +292,11 @@ int main(int argc, char ** argv)
             const double transport_us = static_cast<double>(
                 receive_ns - msg->publish_timestamp) / 1000.0;
 
+#if SAVE_CSV
             full_us_vec.push_back(full_us);
             transport_us_vec.push_back(transport_us);  
-            
+#endif
+
             total_full_us      += full_us;
             total_transport_us += transport_us;
             min_transport_us    = std::min(min_transport_us, transport_us);
@@ -353,7 +358,9 @@ int main(int argc, char ** argv)
         });
     }
 
+#if SAVE_CSV
     save_csv(csv_path, full_us_vec, transport_us_vec);
+#endif
 
     // ── shutdown summary ──────────────────────────────────────────────────────
     if (frame_count > 0) {

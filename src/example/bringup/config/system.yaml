@@ -66,6 +66,8 @@ robot_steering_controller:
     cmd_topic: "/robot_cmd"  # controller will subscribe to this
     read: 0
     file_name: ""
+    stop_distance: 1.5
+    slow_distance: 3.0
 
 gps_sensor_broadcaster:
   ros__parameters:

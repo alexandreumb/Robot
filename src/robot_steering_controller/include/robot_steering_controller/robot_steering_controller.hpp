@@ -27,7 +27,13 @@
 
   namespace robot_steering_controller
   {
-  
+  enum RobotState
+  {
+    RUNNING,
+    EMERGENCY_STOP,
+    SLOW_DOWN,
+  };
+
   enum StateInterfaces
   {
     //WHEELS
@@ -159,7 +165,6 @@
     std::vector<std::string> direction_names_;
 
     int tracked_object_id_{0};
-
     // name constants for state interfaces
     size_t nr_state_itfs_{0};
     // name constants for command interfaces
@@ -167,6 +172,12 @@
 
   private:
     void halt();
+    int object_detection(int label, double point3d_x, double point3d_y, double point3d_z);
+
+    int halt_{0};
+    double stop_distance_{0.0};
+    double slow_distance_{0.0};
+    double wheelbase_{0.0};
 
     ROBOT_STEERING_CONTROLLER__VISIBILITY_LOCAL void reference_callback(
       const std::shared_ptr<ImgAnalyzeMsg> msg);    

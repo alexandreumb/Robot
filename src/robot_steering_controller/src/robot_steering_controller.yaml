@@ -195,3 +195,17 @@ robot_steering_controller:
     description: "File name to read from.",
     read_only: false,
   }
+
+  stop_distance: {
+    type: double,
+    default_value: 0.0,
+    description: "Distance to stop the robot in meters.",
+    read_only: false,
+  }
+
+  slow_distance: {
+    type: double,
+    default_value: 0.0,
+    description: "Distance to slow down the robot in meters.",
+    read_only: false,
+  }
