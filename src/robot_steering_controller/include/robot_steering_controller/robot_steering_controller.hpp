@@ -164,7 +164,6 @@
     std::vector<std::string> axes_names_;
     std::vector<std::string> direction_names_;
 
-    int tracked_object_id_{0};
     // name constants for state interfaces
     size_t nr_state_itfs_{0};
     // name constants for command interfaces
@@ -177,7 +176,10 @@
     int halt_{0};
     double stop_distance_{0.0};
     double slow_distance_{0.0};
-    double wheelbase_{0.0};
+    double wheelbase_{0.0};    
+    int object_tracking_{0};
+    int tracked_object_id_{0};
+    int car_movement{RUNNING};
 
     ROBOT_STEERING_CONTROLLER__VISIBILITY_LOCAL void reference_callback(
       const std::shared_ptr<ImgAnalyzeMsg> msg);    

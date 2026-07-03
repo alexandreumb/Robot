@@ -52,6 +52,7 @@ namespace utility
       msg->object[i].point3d.z = std::numeric_limits<double>::quiet_NaN();
     }
     msg->header.stamp = node->now();
+    msg->has_object = 0;
   }
 
   void reset_controller_reference_teleopcommand_msg(
@@ -259,8 +260,8 @@ RobotSteeringController::RobotSteeringController()
   
     if (tracked_object_id_ % 100 == 0)
     {
-      RCLCPP_INFO(get_node()->get_logger(), "Updating odometry with heading: %f, position_x: %f, position_y: %f, velocity_north: %f, velocity_east: %f",
-        heading, position_x, position_y, velocity_north, velocity_east);
+      //RCLCPP_INFO(get_node()->get_logger(), "Updating odometry with heading: %f, position_x: %f, position_y: %f, velocity_north: %f, velocity_east: %f",
+      //  heading, position_x, position_y, velocity_north, velocity_east);
     };
 
     odometry_.update_from_position(
@@ -441,38 +442,54 @@ RobotSteeringController::RobotSteeringController()
     auto current_data = *(input_ref_teleop_.readFromRT());
     auto current_objects = *(input_ref_img_.readFromRT());
 
-    if (current_objects->has_object)
-    {
-      for (int i = 0; i < current_objects->object.size(); ++i)
-      {
-        auto car_movement = object_detection(current_objects->object[i].label,
-        current_objects->object[i].point3d.x,
-        current_objects->object[i].point3d.y,
-        current_objects->object[i].point3d.z);
+    //const auto t = time - (*(input_ref_img_.readFromRT()))->middle_header.stamp;
+    //RCLCPP_INFO(get_node()->get_logger(), "Update middle: %f seconds", t.seconds());
+    const auto age_of_last_command = time - (*(input_ref_img_.readFromRT()))->header.stamp; 
+    RCLCPP_INFO(get_node()->get_logger(), "Update 1: %f seconds", age_of_last_command.seconds());
 
-        if (car_movement == EMERGENCY_STOP)
+    if (current_objects->has_object == 1)
+    {
+      const auto timeout =
+      age_of_last_command > ref_timeout_ && ref_timeout_ != rclcpp::Duration::from_seconds(0);
+      if (!timeout)
+      {
+        object_tracking_ +=1;
+        for (int i = 0; i < current_objects->object.size(); ++i)
         {
-          halt_ = car_movement;
-          RCLCPP_INFO(get_node()->get_logger(), "Halting the robot due to detected object.");
-          break;
+          car_movement = object_detection(current_objects->object[i].label,
+          current_objects->object[i].point3d.x,
+          current_objects->object[i].point3d.y,
+          current_objects->object[i].point3d.z);
+
+          if (car_movement == EMERGENCY_STOP)
+          {
+            halt_ = car_movement;
+            //RCLCPP_INFO(get_node()->get_logger(), "Halting the robot due to detected object.");
+            break;
+          }
+          else if (car_movement == SLOW_DOWN)
+          {
+            halt_ = car_movement;
+            //RCLCPP_INFO(get_node()->get_logger(), "Slowing down the robot due to detected object.");
+          }
+          else
+          {
+            if (current_objects->object[i].label)
+            {
+              //RCLCPP_INFO(get_node()->get_logger(), "Person is the detected object.");
+            }
+          }
         }
-        else if (car_movement == SLOW_DOWN)
-        {
-          halt_ = car_movement;
-          RCLCPP_INFO(get_node()->get_logger(), "Slowing down the robot due to detected object.");
-        }
-        else
-        {
-          RCLCPP_INFO(get_node()->get_logger(), "No action required for detected object.");
-        }
+        //RCLCPP_INFO(get_node()->get_logger(), "Object tracking count: %d", object_tracking_);
       }
     }
+
 
     if (!std::isnan(current_data->velocity) && !std::isnan(current_data->angle))
     {
       reference_velocity_ = current_data->velocity;
       reference_angle_ = current_data->angle;
-      if (tracked_object_id_ % 1000 == 0) {
+      if (tracked_object_id_ % 10000 == 0) {
         RCLCPP_INFO(get_node()->get_logger(), "Received new reference velocity: %f", current_data->velocity);
         RCLCPP_INFO(get_node()->get_logger(), "Received new point x: %f", state_interfaces_[NEXT_POS_X].get_value());
         RCLCPP_INFO(get_node()->get_logger(), "Received new point y: %f", state_interfaces_[NEXT_POS_Y].get_value());
@@ -486,32 +503,40 @@ RobotSteeringController::RobotSteeringController()
     if (!std::isnan(reference_velocity_) && !std::isnan(reference_angle_))
     {
       const auto age_of_last_command = time - (*(input_ref_teleop_.readFromRT()))->header.stamp;
+      //RCLCPP_INFO(get_node()->get_logger(), "Update 2: %f seconds", age_of_last_command.seconds());  
       const auto timeout =
       age_of_last_command > ref_timeout_ && ref_timeout_ != rclcpp::Duration::from_seconds(0);
 
       // store (for open loop odometry) and set commands
       last_velocity_ = timeout ? 0.0 : reference_velocity_;
       last_angle_ = timeout ? 0.0 : reference_angle_;
-
+      
       if (halt_ == EMERGENCY_STOP)
       {
         auto [velocity_commands, steering_commands] = odometry_.get_commands(0.0);
         command_interfaces_[CMD_VELOCITY].set_value(velocity_commands);
         command_interfaces_[CMD_STEERING].set_value(steering_commands);
+        //RCLCPP_INFO(get_node()->get_logger(), "Emergency stop activated. Setting velocity to 0.");
       }
       else if (halt_ == SLOW_DOWN)
       {
         auto [velocity_commands, steering_commands] = odometry_.get_commands(1.0);
         command_interfaces_[CMD_VELOCITY].set_value(velocity_commands);
         command_interfaces_[CMD_STEERING].set_value(steering_commands);
+        //RCLCPP_INFO(get_node()->get_logger(), "Slow down activated. Setting velocity to 1.0.");
       }
       else
       {
         auto [velocity_commands, steering_commands] = odometry_.get_commands(last_velocity_);
         command_interfaces_[CMD_VELOCITY].set_value(velocity_commands);
         command_interfaces_[CMD_STEERING].set_value(steering_commands);
+        //RCLCPP_INFO(get_node()->get_logger(), "Setting velocity to %f and steering to %f.", last_velocity_, last_angle_);
+
       }
     }
+
+    //utility::reset_controller_reference_teleopcommand_msg(*((input_ref_teleop_.readFromRT())), get_node());
+    //utility::reset_controller_reference_image_msg(*(input_ref_img_.readFromRT()), get_node());
 
     // Publish odometry message
     // Compute and store orientation info
@@ -600,7 +625,8 @@ RobotSteeringController::RobotSteeringController()
         "Timestamp in header is missing, using current time as command timestamp.");
         msg->header.stamp = get_node()->now();
     }
-    const auto age_of_last_command = get_node()->now() - msg->header.stamp;
+    const auto age_of_last_command = get_node()->now() - msg->middle_header.stamp;
+    //RCLCPP_INFO(get_node()->get_logger(), "Reference callback: %f seconds", age_of_last_command.seconds());
 
     if (ref_timeout_ == rclcpp::Duration::from_seconds(0) || age_of_last_command <= ref_timeout_)
     {
@@ -619,6 +645,7 @@ RobotSteeringController::RobotSteeringController()
         msg->header.stamp = get_node()->now();
     }
     const auto age_of_last_command = get_node()->now() - msg->header.stamp;
+    //RCLCPP_INFO(get_node()->get_logger(), "Reference teleop: %f seconds", age_of_last_command.seconds());
 
     if (ref_timeout_ == rclcpp::Duration::from_seconds(0) || age_of_last_command <= ref_timeout_)
     {
@@ -629,7 +656,7 @@ RobotSteeringController::RobotSteeringController()
   int RobotSteeringController::object_detection(int label, double point3d_x, double point3d_y, double point3d_z)
   {
 
-    const double corridor = (wheelbase_ * 0.75); // half of the wheelbase as a corridor width
+    const double corridor = (wheelbase_ * 0.75);
 
     bool in_corridor = (std::abs(point3d_x) < corridor);
 

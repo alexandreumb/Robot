@@ -46,7 +46,7 @@ static const std::string OUTPUT_DIR = std::string(getenv("HOME")) + "/latency_da
 
 // ── options ───────────────────────────────────────────────────────────────────
 #define USE_CLOCK_MONOTONIC  0
-#define USE_RT_SCHEDULING    0
+#define USE_RT_SCHEDULING    1
 #define USE_CPU_AFFINITY     0
 #define REALSENSE            1
 #define SAVE_CSV             1
@@ -63,6 +63,7 @@ struct Frame
     cv::Mat depth;
     image_intrinsics intrinsics;
     int64_t timestamp;
+    int64_t transfer_time;
 };
 
 // ── globals ───────────────────────────────────────────────────────────────────
@@ -211,6 +212,10 @@ int main(int argc, char ** argv)
     std::vector<double> transport_us_vec;
     full_us_vec.reserve(10000);
     transport_us_vec.reserve(10000);
+    int test{0};
+    std::vector<double> process_time;
+    process_time.reserve(10000);
+
 #endif 
 
     double   min_transport_us   = std::numeric_limits<double>::max();
@@ -221,8 +226,15 @@ int main(int argc, char ** argv)
     mlockall(MCL_CURRENT | MCL_FUTURE);
 
 // Processing thread
+/*
     std::thread process_image_and_pub([&] ()
     {
+        int test{0};
+        std::vector<double> process_time;
+        std::vector<double> transfer_time;
+        process_time.reserve(10000);
+        transfer_time.reserve(10000);
+
         while (!stop)
         {
             Frame current_frame;
@@ -237,14 +249,22 @@ int main(int argc, char ** argv)
                 latest_frame.reset();
             }
         
+            auto transfer_duration = node->now().nanoseconds() - current_frame.transfer_time;
+            transfer_time.push_back(static_cast<double>(transfer_duration) / 1'000'000'000.0); // Convert to seconds
             ImgAnalyze obj_msg;
             obj_msg.has_object = 0;
 #if GPU 
+            auto before = node->now();
             std::vector<Object> objects = process_image(detector, current_frame.color, current_frame.depth, current_frame.intrinsics);
-            
+            auto after = node->now();
+            auto process_duration = after - before;
+            process_time.push_back(process_duration.seconds());
+
             if (objects.size() > 0)
             {
-                RCLCPP_INFO(node->get_logger(), "%lu objects detected in the current frame.", objects.size());
+                test += 1;
+                RCLCPP_INFO(node->get_logger(), "Frame %d.", test);
+                //RCLCPP_INFO(node->get_logger(), "%lu objects detected in the current frame.", objects.size());
                 obj_msg.has_object = 1;
                 obj_msg.object.resize(objects.size());
                 for (size_t i = 0; i < objects.size() && i < obj_msg.object.size(); ++i)
@@ -262,16 +282,21 @@ int main(int argc, char ** argv)
                     obj_msg.object[i].point3d.y = objects[i].Pose3D[1];
                     obj_msg.object[i].point3d.z = objects[i].Pose3D[2];
                 }
-            }     
+            }                 
                   
 #endif
             obj_msg.header.stamp.sec = current_frame.timestamp / 1'000'000'000LL;
             obj_msg.header.stamp.nanosec = current_frame.timestamp % 1'000'000'000LL;
+            obj_msg.middle_header.stamp = node->now();
+            //RCLCPP_INFO(node->get_logger(), "Publishing image time: %llu.", (node->now().nanoseconds() - obj_msg.header.stamp.sec * 1'000'000'000LL - obj_msg.header.stamp.nanosec)%1'000'000'000LL);
 
             pub->publish(obj_msg);
         }
-    });
 
+        RCLCPP_INFO(node->get_logger(), "Average processing time: %.4f s", std::accumulate(process_time.begin(), process_time.end(), 0.0) / process_time.size());
+        RCLCPP_INFO(node->get_logger(), "Average transfer time: %.4f s", std::accumulate(transfer_time.begin(), transfer_time.end(), 0.0) / transfer_time.size());
+    });
+*/
     // ── main loop ─────────────────────────────────────────────────────────────
     while (!stop && rclcpp::ok())
     {
@@ -329,17 +354,60 @@ int main(int argc, char ** argv)
             img_intrinsics.ppy = msg->image_intrinsics.ppy;
             img_intrinsics.depth_units = msg->image_intrinsics.depth_units;
 
+            /*
             {
                 std::lock_guard<std::mutex> lock(write_mutex);
-                Frame frame;    
-                frame.color = img_color.clone();
-                frame.depth = img_depth.clone();
-                frame.intrinsics = img_intrinsics;
-                frame.timestamp = msg->timestamp;
-
-                latest_frame = std::move(frame);
+                latest_frame = Frame{
+                    img_color.clone(),
+                    img_depth.clone(),
+                    img_intrinsics,
+                    msg->timestamp,
+                    receive_ns
+                };
             }
             frame_cv.notify_one();
+            */
+           
+            ImgAnalyze obj_msg;
+            obj_msg.has_object = 0;
+#if GPU 
+            std::vector<Object> objects = process_image(detector, img_color, img_depth, img_intrinsics);
+
+            if (objects.size() > 0)
+            {
+                test += 1;
+                RCLCPP_INFO(node->get_logger(), "Frame %d.", test);
+                //RCLCPP_INFO(node->get_logger(), "%lu objects detected in the current frame.", objects.size());
+                obj_msg.has_object = 1;
+                obj_msg.object.resize(objects.size());
+                for (size_t i = 0; i < objects.size() && i < obj_msg.object.size(); ++i)
+                {
+                    obj_msg.object[i].label = objects[i].label;
+                    obj_msg.object[i].probability = objects[i].probability;
+                    obj_msg.object[i].box.x = objects[i].rect.x;
+                    obj_msg.object[i].box.y = objects[i].rect.y;
+                    obj_msg.object[i].box.width = objects[i].rect.width;
+                    obj_msg.object[i].box.height = objects[i].rect.height;
+                    obj_msg.object[i].kps = objects[i].kps;
+                    obj_msg.object[i].point.pose_x = objects[i].Pose2D.x;
+                    obj_msg.object[i].point.pose_y = objects[i].Pose2D.y;
+                    obj_msg.object[i].point3d.x = objects[i].Pose3D[0];
+                    obj_msg.object[i].point3d.y = objects[i].Pose3D[1];
+                    obj_msg.object[i].point3d.z = objects[i].Pose3D[2];
+                }
+            }                 
+                  
+#endif
+            obj_msg.header.stamp.sec = msg->timestamp / 1'000'000'000LL;
+            obj_msg.header.stamp.nanosec = msg->timestamp % 1'000'000'000LL;
+            obj_msg.middle_header.stamp = node->now();
+            //RCLCPP_INFO(node->get_logger(), "Publishing image time: %llu.", (node->now().nanoseconds() - obj_msg.header.stamp.sec * 1'000'000'000LL - obj_msg.header.stamp.nanosec)%1'000'000'000LL);
+
+            auto after = node->now();
+            auto process_duration = after.nanoseconds() - receive_ns;
+            process_time.push_back(static_cast<double>(process_duration) / 1'000'000'000.0); // Convert to seconds
+
+            pub->publish(obj_msg);
 
             // ── Step 6: release chun  k back to iceoryx pool ────────────────────
             // Must be called — otherwise the pool exhausts and publisher stalls.
@@ -375,6 +443,7 @@ int main(int argc, char ** argv)
         RCLCPP_INFO(node->get_logger(), "  Transport max B→D    : %.1f us", max_transport_us);
 //        RCLCPP_INFO(node->get_logger(), "  Skipped frames       : %d",     skipped);
         RCLCPP_INFO(node->get_logger(), "  CSV saved to         : %s",     csv_path.c_str());
+        RCLCPP_INFO(node->get_logger(), " Average processing time: %.4f s", std::accumulate(process_time.begin(), process_time.end(), 0.0) / process_time.size());
         RCLCPP_INFO(node->get_logger(), "──────────────────────────────────────────");
     } else {
         RCLCPP_WARN(node->get_logger(), "No frames received");
@@ -382,8 +451,8 @@ int main(int argc, char ** argv)
     
     RCLCPP_INFO(node->get_logger(), "Shutting down native iceoryx subscriber");
     stop = true;
-    frame_cv.notify_all();
-    process_image_and_pub.join();
+    //frame_cv.notify_all();
+    //process_image_and_pub.join();
     rclcpp::shutdown();
     return 0;
 }

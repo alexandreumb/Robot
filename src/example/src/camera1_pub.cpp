@@ -1,5 +1,6 @@
 #include "msgs/msg/image8_mb.hpp"
 #include "iceoryx_posh/popo/untyped_publisher.hpp"
+#include "rclcpp/rclcpp.hpp"
 #include <librealsense2/rs.hpp>
 #include <opencv4/opencv2/opencv.hpp>
 #include <atomic>

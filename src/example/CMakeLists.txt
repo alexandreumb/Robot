@@ -41,7 +41,7 @@ install(
 # Camera nodes
 # ----------------------------
 add_executable(camera1_pub src/camera1_pub.cpp)
-ament_target_dependencies(camera1_pub OpenCV msgs realsense2)
+ament_target_dependencies(camera1_pub OpenCV rclcpp msgs realsense2)
 target_link_libraries(camera1_pub iceoryx_hoofs::iceoryx_hoofs iceoryx_posh::iceoryx_posh ${realsense2_LIBRARY})
 
 add_executable(camera_2 src/camera_2_image_pub.cpp)

@@ -23,26 +23,6 @@ joint_state_broadcaster:
     use_sim_time: false  # Set to true if using Gazebo/simulation
     joints: ["front_wheels_joint", "rear_wheels_joint"]
 
-ackermann_steering_controller:
-  ros__parameters:
-    use_sim_time: false  # Set to true if using Gazebo/simulation
-    position_feedback: false
-    wheelbase: 1.0
-    front_wheels_radius: 0.1
-    rear_wheels_radius: 0.1
-    front_steering: true
-    reference_timeout: 5.0
-    rear_wheels_names: ["left_rear_wheel_joint", "right_rear_wheel_joint"]
-    front_wheels_names: ["left_front_wheel_joint", "right_front_wheel_joint"]  # rolling joints
-    front_wheel_track: 0.6
-    rear_wheel_track: 0.6
-    base_frame_id: base_link
-    odom_frame_id: odom
-    enable_odom_tf: true
-    use_stamped_vel: true
-    open_loop: false
-    cmd_topic: "/ackermann_cmd"  # controller will subscribe to this
-
 robot_steering_controller:
   ros__parameters:
     use_sim_time: false  # Set to true if using Gazebo/simulation
@@ -52,7 +32,7 @@ robot_steering_controller:
     max_velocity: 6.0
     front_wheels_radius: 0.203
     rear_wheels_radius: 0.203
-    reference_timeout: 2.0
+    reference_timeout: 1.0
     axes_names: ["front_wheels_joint", "rear_wheels_joint"]
     direction_names: ["direction_joint"]
     gps_sensor_names: ["gps_sensor"]

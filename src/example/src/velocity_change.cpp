@@ -42,12 +42,14 @@ void signal_handler(int)
     running = false; 
 }
 
+/*
 inline int64_t monotonic_now_ns()
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return static_cast<int64_t>(ts.tv_sec) * 1'000'000'000LL + ts.tv_nsec;
 }
+*/
 
 int main(int argc, char ** argv)
 {
@@ -61,7 +63,7 @@ int main(int argc, char ** argv)
 
     auto qos = rclcpp::QoS(1).best_effort().durability_volatile();
     auto publisher = node->create_publisher<msgs::msg::TeleopCommand>(
-        "robot_steering_controller/reference_data", qos);
+        "robot_steering_controller/reference_teleop", qos);
 
     std::thread pub_thread([&]() {
         while (running) {
@@ -74,13 +76,13 @@ int main(int argc, char ** argv)
                 v = velocity;
                 a = angle;
             }   
-            auto time = monotonic_now_ns();
+            auto time = node->now().nanoseconds();
             msg.header.stamp.sec = time / 1'000'000'000LL;
             msg.header.stamp.nanosec = time % 1'000'000'000LL;
             msg.velocity = v;
             msg.angle = a;
             publisher->publish(msg);
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     });
 
@@ -117,6 +119,9 @@ int main(int argc, char ** argv)
                         angle = -15;
                 }
                 break;
+            case 'i':
+                std::cout << "Current velocity: " << velocity << ", Current angle: " << angle << std::endl;
+                break;
             case 'q':
                 running = false;
                 break;
@@ -125,6 +130,7 @@ int main(int argc, char ** argv)
         }
     }
 
+    disableRawMode();
     pub_thread.join();
     rclcpp::shutdown();
     return 0;
