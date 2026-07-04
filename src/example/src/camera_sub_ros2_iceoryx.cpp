@@ -152,7 +152,6 @@ int main(int argc, char ** argv)
         .best_effort()
         .durability_volatile();
 
-    mlockall(MCL_CURRENT | MCL_FUTURE);
     auto sub = node->create_subscription<Image8Mb>("camera", qos, [](Image8Mb msg) {} );
 
     std::vector<double> full_us_vec;

@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <iostream>
 #include <time.h>       // clock_gettime, CLOCK_MONOTONIC
+#include <sys/mman.h>   // for mlockall 
+#include <vector>
 
 using Image8Mb = msgs::msg::Image8Mb;
 
@@ -16,6 +18,7 @@ using Image8Mb = msgs::msg::Image8Mb;
 // Both sides must use the same clock or diffs will be meaningless.
 #define USE_CLOCK_MONOTONIC   0
 #define REALSENSE 1
+
 
 static constexpr char IOX_SERVICE[]  = "msgs/msg/Image8Mb";
 static constexpr char IOX_INSTANCE[] = "/camera";
@@ -38,6 +41,7 @@ inline int64_t monotonic_now_ns()
 constexpr int      CAM_INDEX   = 2;
 constexpr int      IMG_WIDTH   = 1280;
 constexpr int      IMG_HEIGHT  = 720;
+constexpr int      WARMUP_CHUNKS = 8; // >= your mempool count for this chunk size
 #if REALSENSE
 constexpr int      IMG_TYPE_DEPTH    = CV_16UC1;      
 constexpr int      IMG_TYPE_COLOR    = CV_8UC3;         // bgr8, 3 bytes per pixel
@@ -61,6 +65,8 @@ int main(int argc, char ** argv)
 
     iox::runtime::PoshRuntime::initRuntime("camera_publisher_native");
     iox::popo::UntypedPublisher pub({IOX_SERVICE, IOX_INSTANCE, IOX_EVENT});
+
+    mlockall(MCL_CURRENT | MCL_FUTURE);
 
 #if REALSENSE
     rs2::pipeline p;
@@ -99,7 +105,23 @@ int main(int argc, char ** argv)
 
 
 #endif
+    std::vector<void*> warmup_chunks;
+    warmup_chunks.reserve(WARMUP_CHUNKS);
 
+    for (int i = 0; i < WARMUP_CHUNKS; ++i) {
+        pub.loan(sizeof(Image8Mb))
+            .and_then([&](void* userPayload) {
+                std::memset(userPayload, 0, sizeof(Image8Mb)); // force every page to fault in now
+                warmup_chunks.push_back(userPayload);
+            })
+            .or_else([](auto& error) {
+                std::cerr << "Warm-up loan failed: " << error << std::endl;
+            });
+    }
+
+    for (void* chunk : warmup_chunks) {
+        pub.release(chunk);
+    }
 
     // ── main capture + publish loop ───────────────────────────────────────────
     while (!stop)
