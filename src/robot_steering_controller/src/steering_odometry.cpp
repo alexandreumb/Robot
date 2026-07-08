@@ -40,6 +40,7 @@ SteeringOdometry::SteeringOdometry(size_t velocity_rolling_window_size)
   wheelbase_(0.0),
   wheel_radius_(0.0),
   max_velocity_(0.0),
+  min_velocity_(0.0),
   max_steering_angle_(0.0),
   traction_wheel_old_pos_(0.0),
   traction_right_wheel_old_pos_(0.0),
@@ -96,15 +97,16 @@ bool SteeringOdometry::update_from_position(
 
 std::tuple<double, double> SteeringOdometry::get_commands(const double velocity)
 {
-  linear_ = std::clamp(velocity, 0.0, max_velocity_);
+  linear_ = std::clamp(velocity, min_velocity_, max_velocity_);
   return {linear_, steer_pos_};
 }
 
-void SteeringOdometry::set_default_params(double wheelbase, double max_steering_angle, double max_velocity)
+void SteeringOdometry::set_default_params(double wheelbase, double max_steering_angle, double max_velocity, double min_velocity)
 {
   wheelbase_ = wheelbase;
   max_steering_angle_ = max_steering_angle;
   max_velocity_ = max_velocity;
+  min_velocity_ = min_velocity;
 }
 
 void SteeringOdometry::set_velocity_rolling_window_size(size_t velocity_rolling_window_size)

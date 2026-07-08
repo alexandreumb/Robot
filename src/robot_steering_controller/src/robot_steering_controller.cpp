@@ -101,11 +101,12 @@ RobotSteeringController::RobotSteeringController()
     const double rear_wheel_track = robot_params_.rear_wheel_track;
     const double max_steering_angle = robot_params_.max_steering_angle;
     const double max_velocity = robot_params_.max_velocity;
+    const double min_velocity = robot_params_.min_velocity;
     wheelbase_ = robot_params_.wheelbase;
     stop_distance_ = robot_params_.stop_distance;
     slow_distance_ = robot_params_.slow_distance;
 
-    odometry_.set_default_params(wheelbase_, max_steering_angle, max_velocity);
+    odometry_.set_default_params(wheelbase_, max_steering_angle, max_velocity, min_velocity);
 
     nr_state_itfs_ = NR_STATE_ITFS;
     nr_cmd_itfs_ = NR_CMD_ITFS;
@@ -262,6 +263,7 @@ RobotSteeringController::RobotSteeringController()
     {
       //RCLCPP_INFO(get_node()->get_logger(), "Updating odometry with heading: %f, position_x: %f, position_y: %f, velocity_north: %f, velocity_east: %f",
       //  heading, position_x, position_y, velocity_north, velocity_east);
+      //RCLCPP_INFO(get_node()->get_logger(), "Next position: x: %f, y: %f, z: %f", next_position_x, next_position_y, next_position_z);
     };
 
     odometry_.update_from_position(
@@ -445,7 +447,7 @@ RobotSteeringController::RobotSteeringController()
     //const auto t = time - (*(input_ref_img_.readFromRT()))->middle_header.stamp;
     //RCLCPP_INFO(get_node()->get_logger(), "Update middle: %f seconds", t.seconds());
     const auto age_of_last_command = time - (*(input_ref_img_.readFromRT()))->header.stamp; 
-    RCLCPP_INFO(get_node()->get_logger(), "Update 1: %f seconds", age_of_last_command.seconds());
+    //RCLCPP_INFO(get_node()->get_logger(), "Update 1: %f seconds", age_of_last_command.seconds());
 
     if (current_objects->has_object == 1)
     {
@@ -464,13 +466,13 @@ RobotSteeringController::RobotSteeringController()
           if (car_movement == EMERGENCY_STOP)
           {
             halt_ = car_movement;
-            //RCLCPP_INFO(get_node()->get_logger(), "Halting the robot due to detected object.");
+            RCLCPP_INFO(get_node()->get_logger(), "Halting the robot due to detected object.");
             break;
           }
           else if (car_movement == SLOW_DOWN)
           {
             halt_ = car_movement;
-            //RCLCPP_INFO(get_node()->get_logger(), "Slowing down the robot due to detected object.");
+            RCLCPP_INFO(get_node()->get_logger(), "Slowing down the robot due to detected object.");
           }
           else
           {
@@ -489,7 +491,8 @@ RobotSteeringController::RobotSteeringController()
     {
       reference_velocity_ = current_data->velocity;
       reference_angle_ = current_data->angle;
-      if (tracked_object_id_ % 10000 == 0) {
+      manual_override_ = current_data->manual;
+      if (tracked_object_id_ % 1000 == 0) {
         RCLCPP_INFO(get_node()->get_logger(), "Received new reference velocity: %f", current_data->velocity);
         RCLCPP_INFO(get_node()->get_logger(), "Received new point x: %f", state_interfaces_[NEXT_POS_X].get_value());
         RCLCPP_INFO(get_node()->get_logger(), "Received new point y: %f", state_interfaces_[NEXT_POS_Y].get_value());
@@ -498,7 +501,6 @@ RobotSteeringController::RobotSteeringController()
     }
     tracked_object_id_++;
     update_odometry(period);
-
 
     if (!std::isnan(reference_velocity_) && !std::isnan(reference_angle_))
     {
@@ -515,21 +517,30 @@ RobotSteeringController::RobotSteeringController()
       {
         auto [velocity_commands, steering_commands] = odometry_.get_commands(0.0);
         command_interfaces_[CMD_VELOCITY].set_value(velocity_commands);
-        command_interfaces_[CMD_STEERING].set_value(steering_commands);
+        if (manual_override_ == 0) {
+          command_interfaces_[CMD_STEERING].set_value(steering_commands);
+        }
         //RCLCPP_INFO(get_node()->get_logger(), "Emergency stop activated. Setting velocity to 0.");
       }
       else if (halt_ == SLOW_DOWN)
       {
         auto [velocity_commands, steering_commands] = odometry_.get_commands(1.0);
         command_interfaces_[CMD_VELOCITY].set_value(velocity_commands);
-        command_interfaces_[CMD_STEERING].set_value(steering_commands);
+        if (manual_override_ == 0) {
+          command_interfaces_[CMD_STEERING].set_value(steering_commands);
+        }
         //RCLCPP_INFO(get_node()->get_logger(), "Slow down activated. Setting velocity to 1.0.");
       }
       else
       {
         auto [velocity_commands, steering_commands] = odometry_.get_commands(last_velocity_);
         command_interfaces_[CMD_VELOCITY].set_value(velocity_commands);
-        command_interfaces_[CMD_STEERING].set_value(steering_commands);
+        if (manual_override_ == 0) {
+          command_interfaces_[CMD_STEERING].set_value(steering_commands);
+        }
+        else {
+          command_interfaces_[CMD_STEERING].set_value(reference_angle_);
+        }
         //RCLCPP_INFO(get_node()->get_logger(), "Setting velocity to %f and steering to %f.", last_velocity_, last_angle_);
 
       }

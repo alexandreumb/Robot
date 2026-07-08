@@ -179,6 +179,7 @@
     double wheelbase_{0.0};    
     int object_tracking_{0};
     int tracked_object_id_{0};
+    int manual_override_{0}; // 0 = no manual override, 1 = manual override
     int car_movement{RUNNING};
 
     ROBOT_STEERING_CONTROLLER__VISIBILITY_LOCAL void reference_callback(

@@ -182,6 +182,13 @@ robot_steering_controller:
     read_only: false,
   }
 
+  min_velocity: {
+    type: double,
+    default_value: 0.0,
+    description: "Minimum velocity of the robot in m/s.",
+    read_only: false,
+  }
+
   read: {
     type: int,
     default_value: 0,

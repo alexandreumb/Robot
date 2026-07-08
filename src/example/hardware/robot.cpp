@@ -449,9 +449,9 @@ hardware_interface::return_type Robot4FarmersHardware::write(
     }
 #endif
     for (const auto &joint : joints_) {
-#if SEND_CAN_COMMANDS
         if (joint.joint_name.find("direction") != std::string::npos) {
-
+            
+#if SEND_CAN_COMMANDS
             ControlData cd;
             cd.velocity = static_cast<float>(joint.command.velocity);
             cd.direction = static_cast<float>(joint.command.direction);
@@ -476,9 +476,12 @@ hardware_interface::return_type Robot4FarmersHardware::write(
             sendFrame(can_id, data.data(), can_dlc);
         }
 #else
-            if (write_direction % 1000 == 0)
+            if (write_direction % 1000 == 0) {
                 RCLCPP_INFO(get_logger(), "Writing command for %s: direction=%.2f", joint.joint_name.c_str(), joint.command.direction);
+                RCLCPP_INFO(get_logger(), "Writing command for %s: velocity=%f", joint.joint_name.c_str(), joint.command.velocity);
+            }
             write_direction++;
+        }
 #endif
     }
     return hardware_interface::return_type::OK;

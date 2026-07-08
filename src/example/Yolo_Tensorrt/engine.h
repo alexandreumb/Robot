@@ -457,6 +457,7 @@ bool Engine<T>::build(std::string onnxModelPath, const std::array<float, 3> &sub
     auto builder = std::unique_ptr<nvinfer1::IBuilder>(nvinfer1::createInferBuilder(m_logger));
     if (!builder)
     {
+        std::cout << "Error, unable to create TensorRT builder!" << std::endl;
         return false;
     }
 
@@ -467,6 +468,7 @@ bool Engine<T>::build(std::string onnxModelPath, const std::array<float, 3> &sub
     auto network = std::unique_ptr<nvinfer1::INetworkDefinition>(builder->createNetworkV2(explicitBatch));
     if (!network)
     {
+        std::cout << "Error, unable to create TensorRT network!" << std::endl;
         return false;
     }
 
@@ -474,12 +476,18 @@ bool Engine<T>::build(std::string onnxModelPath, const std::array<float, 3> &sub
     auto parser = std::unique_ptr<nvonnxparser::IParser>(nvonnxparser::createParser(*network, m_logger));
     if (!parser)
     {
+        std::cerr << "ONNX parsing failed\n";
+        for (int i = 0; i < parser->getNbErrors(); ++i)
+        {
+            std::cerr << parser->getError(i)->desc() << std::endl;
+        }
         return false;
     }
 
     // We are going to first read the onnx file into memory, then pass that buffer
     // to the parser. Had our onnx model file been encrypted, this approach would
     // allow us to first decrypt the buffer.
+    std::cout << "Reading onnx model from path: " << onnxModelPath << std::endl;
     std::ifstream file(onnxModelPath, std::ios::binary | std::ios::ate);
     std::streamsize size = file.tellg();
     file.seekg(0, std::ios::beg);
@@ -494,6 +502,7 @@ bool Engine<T>::build(std::string onnxModelPath, const std::array<float, 3> &sub
     auto parsed = parser->parse(buffer.data(), buffer.size());
     if (!parsed)
     {
+        std::cout << "Error, unable to parse ONNX model!" << std::endl;
         return false;
     }
 
@@ -550,20 +559,21 @@ bool Engine<T>::build(std::string onnxModelPath, const std::array<float, 3> &sub
         int32_t inputH = inputDims.d[2];
         int32_t inputW = inputDims.d[3];
 
+        std::cout << "dimensions for input " << i << " (" << inputName << ") are: " << inputC << "x" << inputH << "x" << inputW<< std::endl;
         // Specify the optimization profile`
         if (doesSupportDynamicBatch)
         {
-            optProfile->setDimensions(inputName, nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims4(1, inputC, inputH, inputW));
+            optProfile->setDimensions(inputName, nvinfer1::OptProfileSelector::kMIN, nvinfer1::Dims4(1, inputC, 640, 640));
         }
         else
         {
             optProfile->setDimensions(inputName, nvinfer1::OptProfileSelector::kMIN,
-                                      nvinfer1::Dims4(m_options.optBatchSize, inputC, inputH, inputW));
+                                      nvinfer1::Dims4(m_options.optBatchSize, inputC, 640, 640));
         }
         optProfile->setDimensions(inputName, nvinfer1::OptProfileSelector::kOPT,
-                                  nvinfer1::Dims4(m_options.optBatchSize, inputC, inputH, inputW));
+                                  nvinfer1::Dims4(m_options.optBatchSize, inputC, 640, 640));
         optProfile->setDimensions(inputName, nvinfer1::OptProfileSelector::kMAX,
-                                  nvinfer1::Dims4(m_options.maxBatchSize, inputC, inputH, inputW));
+                                  nvinfer1::Dims4(m_options.maxBatchSize, inputC, 640, 640));
     }
     config->addOptimizationProfile(optProfile);
 
@@ -606,7 +616,7 @@ bool Engine<T>::build(std::string onnxModelPath, const std::array<float, 3> &sub
         const auto inputDims = input->getDimensions();
         const auto calibrationFileName = engineName + ".calibration";
 
-        m_calibrator = std::make_unique<Int8EntropyCalibrator2>(m_options.calibrationBatchSize, inputDims.d[3], inputDims.d[2],
+        m_calibrator = std::make_unique<Int8EntropyCalibrator2>(m_options.calibrationBatchSize, 640, 640,
                                                                 m_options.calibrationDataDirectoryPath, calibrationFileName, inputName,
                                                                 subVals, divVals, normalize);
         config->setInt8Calibrator(m_calibrator.get());

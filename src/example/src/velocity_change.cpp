@@ -11,8 +11,10 @@
 #include "msgs/msg/teleop_command.hpp"
 
 std::atomic<bool> running{true};
-int velocity{0};
+double velocity{0};
 int angle{0};
+int manual_override{0}; // 0 = no manual override, 1 = manual override
+int backwards{1}; // 1 = forward, -1 = backward
 struct termios oldt, newt;
 std::mutex reader_mutex;    
 
@@ -71,16 +73,19 @@ int main(int argc, char ** argv)
             msg.header.frame_id = "base_link";
             int a;
             int v;
+            int manual;
             {
                 std::lock_guard<std::mutex> lock(reader_mutex);
                 v = velocity;
                 a = angle;
+                manual = manual_override;
             }   
             auto time = node->now().nanoseconds();
             msg.header.stamp.sec = time / 1'000'000'000LL;
             msg.header.stamp.nanosec = time % 1'000'000'000LL;
             msg.velocity = v;
             msg.angle = a;
+            msg.manual = manual;
             publisher->publish(msg);
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
@@ -94,17 +99,20 @@ int main(int argc, char ** argv)
             continue;
         switch (c)
         {
+            case '0':
+                velocity = 0;
+                break;
             case '1':
-                velocity = 1;
+                velocity = 1.0 * backwards;
                 break;
             case '2':
-                velocity = 2;
+                velocity = 2.0 * backwards;
                 break;
             case '3':
-                velocity = 3;
+                velocity = 3.0 * backwards;
                 break;
             case '4':
-                velocity = 4;
+                velocity = 4.0 * backwards;
                 break;
             case 27:
                 if (read(STDIN_FILENO, &c, 1) <= 0)
@@ -117,10 +125,21 @@ int main(int argc, char ** argv)
                         angle = 15;
                     else if (c == 'D')
                         angle = -15;
+                    else if (c == 'A')
+                        angle = 0;
+                    else if (c == 'B') {
+
+                        backwards = -backwards; // Toggle forward/backward
+                        velocity = velocity * -1.0; // Reset velocity when changing direction
+                        std::cout << "Backwards: " << (backwards == -1 ? "YES" : "NO") << std::endl;
+                    }
                 }
                 break;
+            case 'm':
+                manual_override = 1 - manual_override; // Toggle manual override
+                break;
             case 'i':
-                std::cout << "Current velocity: " << velocity << ", Current angle: " << angle << std::endl;
+                std::cout << "Current velocity: " << velocity << ", Current angle: " << angle << ", Manual override: " << (manual_override ? "ON" : "OFF") << ", Backwards: " << (backwards == -1 ? "YES" : "NO") << std::endl;
                 break;
             case 'q':
                 running = false;

@@ -30,6 +30,7 @@ robot_steering_controller:
     wheelbase: 1.5
     max_steering_angle: 30.0
     max_velocity: 6.0
+    min_velocity: -5.0
     front_wheels_radius: 0.203
     rear_wheels_radius: 0.203
     reference_timeout: 1.0

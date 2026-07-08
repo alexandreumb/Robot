@@ -106,7 +106,7 @@ bool update_from_position(
    * \param max_velocity Maximum velocity [m/s]
    */
 
-  void set_default_params(double wheelbase, double max_steering_angle, double max_velocity);
+  void set_default_params(double wheelbase, double max_steering_angle, double max_velocity, double min_velocity);
 
   /**
    * \brief Velocity rolling window size setter
@@ -163,6 +163,7 @@ private:
   double linear_;   //   [m/s]
   double angular_;  // [rad/s]
   double max_velocity_; // [m/s]
+  double min_velocity_; // [m/s]
 
   /// Kinematic parameters
   double wheel_track_;   // [m]
