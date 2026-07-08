@@ -67,14 +67,23 @@ struct Frame
     int64_t transfer_time;
 };
 
+struct TimesToAnalyze
+{
+    int64_t full_ms;
+    int64_t transport_ms;
+    int64_t process_time_ms;
+    int64_t transfer_thread_ms;
+};  
+
 // ── globals ───────────────────────────────────────────────────────────────────
 std::atomic<bool> stop{false};
 std::mutex write_mutex;
 std::optional<Frame> latest_frame;
+std::optional<TimesToAnalyze> latest_times;
 std::condition_variable frame_cv;
 
-static double   total_full_us     = 0.0;
-static double   total_transport_us = 0.0;
+static double   total_full_ms{0.0};
+static double   total_transport_ms{0.0};
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 void signal_handler(int) { stop = true; }
@@ -115,10 +124,7 @@ std::string make_csv_path(std::string engine_file_path)
 
 void save_csv(
     const std::string & path,
-    const std::vector<double> & full_us,
-    const std::vector<double> & transport_us, 
-    const std::vector<double> & process_us,
-    const std::vector<double> & transfer_us,
+    const std::vector<TimesToAnalyze> & times,
     const std::vector<double> & object_identified)
 {
     std::ofstream f(path);
@@ -126,14 +132,14 @@ void save_csv(
         std::cerr << "[ERROR] Cannot open " << path << " for writing\n";
         return;
     }
-    f << "frame,full_us,transport_us,process_us,object_identified,transfer_us\n";
-    for (size_t i = 0; i < full_us.size(); ++i) {
+    f << "frame,full_ms,transport_ms,process_ms,transfer_ms,object_identified\n";
+    for (size_t i = 0; i < times.size(); ++i) {
         f << i << ","
-          << std::fixed << std::setprecision(2) << full_us[i] << ","
-          << std::fixed << std::setprecision(2) << transport_us[i] << ","
-          << std::fixed << std::setprecision(2) << process_us[i] << ","
-          << std::fixed << std::setprecision(2) << object_identified[i] << ","
-          << std::fixed << std::setprecision(2) << transfer_us[i] << "\n";
+          << std::fixed << std::setprecision(2) << times[i].full_ms << ","
+          << std::fixed << std::setprecision(2) << times[i].transport_ms << ","
+          << std::fixed << std::setprecision(2) << times[i].process_time_ms << ","
+          << std::fixed << std::setprecision(2) << times[i].transfer_thread_ms << ","
+          << std::fixed << std::setprecision(2) << object_identified[i] << "n"
     }
     std::cout << "[INFO] Saved " << full_us.size()
               << " frames to " << path << "\n";
@@ -224,22 +230,16 @@ int main(int argc, char ** argv)
     );
 
 #if SAVE_CSV
-    std::vector<double> full_us_vec;
-    std::vector<double> transport_us_vec;
-    std::vector<double> process_time;   
-    std::vector<double> transfer_time;
-    std::vector<double> object_identified;
-    full_us_vec.reserve(10000);
-    transport_us_vec.reserve(10000);
-    process_time.reserve(10000);
-    transfer_time.reserve(10000);
+    std::vector<TimesToAnalyze> times;
+    std::vector<int> object_identified;
+    times.reserve(10000);
     object_identified.reserve(10000);
     int test{0};
 
 #endif 
 
-    double   min_transport_us   = std::numeric_limits<double>::max();
-    double   max_transport_us   = 0.0;
+    double   min_transport_ms   = std::numeric_limits<double>::max();
+    double   max_transport_ms   = 0.0;
     uint64_t frame_count        = 0;
 
     const std::string csv_path = make_csv_path(engine_file_path);
@@ -252,6 +252,7 @@ int main(int argc, char ** argv)
         while (!stop)
         {
             Frame current_frame;
+            TimesToAnalyze current_times;
             {
                 std::unique_lock<std::mutex> lock(write_mutex);
                 frame_cv.wait(lock, [&]{ return latest_frame.has_value() || stop;});
@@ -260,11 +261,12 @@ int main(int argc, char ** argv)
                     break;
 
                 current_frame = std::move(*latest_frame);
+                current_times = std::move(*latest_times);
                 latest_frame.reset();
+                latest_times.reset();
             }
         
             auto transfer_duration = node->now().nanoseconds() - current_frame.transfer_time;
-            transfer_time.push_back(static_cast<double>(transfer_duration) / 1'000'000LL); // Convert to seconds
             ImgAnalyze obj_msg;
             obj_msg.has_object = 0;
 #if GPU 
@@ -272,10 +274,15 @@ int main(int argc, char ** argv)
             //std::vector<Object> objects = process_image(detector, current_frame.color, current_frame.depth, current_frame.intrinsics);
             auto after = node->now().nanoseconds();
             auto process_duration = after - before;
-            process_time.push_back(process_duration / 1'000'000LL); // Convert to milliseconds
+
+#if SAVE_CSV
+            current_times.transfer_thread_ms = (static_cast<double>(transfer_duration) / 1'000'000LL); // Convert to seconds
+            current_times.process_time_ms = (process_duration / 1'000'000LL); // Convert to milliseconds
+            times.push(current_times);
+#endif
             //RCLCPP_INFO(node->get_logger(), "Processing time: %.4f ms", process_duration / 1'000'000LL);
 
-            /*
+            
             if (objects.size() > 0)
             {   
                 object_identified.push_back(objects.size());
@@ -300,7 +307,7 @@ int main(int argc, char ** argv)
                     obj_msg.object[i].point3d.z = objects[i].Pose3D[2];
                 }
             }                 
-            */
+            
                   
 #endif
             obj_msg.header.stamp.sec = current_frame.timestamp / 1'000'000'000LL;
@@ -317,7 +324,7 @@ int main(int argc, char ** argv)
 #endif
 
     // ── main loop ─────────────────────────────────────────────────────────────
-    while (!stop && rclcpp::ok())
+    while (!sprocess_timetop && rclcpp::ok())
     {
         // tight spin — zero wakeup latency, burns one CPU core
         iox_sub.take()
@@ -331,20 +338,15 @@ int main(int argc, char ** argv)
 
             const auto * msg = static_cast<const Image8Mb *>(userPayload);
             // ── Step 3: measure latency ───────────────────────────────────────
-            const double full_us = static_cast<double>(
+            const double full_ms = static_cast<double>(
                 receive_ns - msg->timestamp) / 1e6; // convert to milliseconds
-            const double transport_us = static_cast<double>(
+            const double transport_ms = static_cast<double>(
                 receive_ns - msg->publish_timestamp) / 1e6; // convert to miliseconds
 
-#if SAVE_CSV
-            full_us_vec.push_back(full_us);
-            transport_us_vec.push_back(transport_us);  
-#endif
-
-            total_full_us      += full_us;
-            total_transport_us += transport_us;
-            min_transport_us    = std::min(min_transport_us, transport_us);
-            max_transport_us    = std::max(max_transport_us, transport_us);
+            total_full_ms      += full_ms;
+            total_transport_ms += transport_ms;
+            min_transport_ms    = std::min(min_transport_ms, transport_ms);
+            max_transport_ms    = std::max(max_transport_ms, transport_ms);
             ++frame_count;
 
             // ── Step 4: construct Mat header over shared memory ───────────────
@@ -376,6 +378,13 @@ int main(int argc, char ** argv)
 #if PUBLISH_METHOD
             {
                 std::lock_guard<std::mutex> lock(write_mutex);
+                latest_times = TimesToAnalyze{
+                    full_ms,
+                    transport_ms,
+                    0,
+                    0
+                };
+
                 latest_frame = Frame{
                     img_color.clone(),
                     img_depth.clone(),
@@ -445,23 +454,23 @@ int main(int argc, char ** argv)
     }
 
 #if SAVE_CSV
-    save_csv(csv_path, full_us_vec, transport_us_vec, process_time, transfer_time, object_identified);
+    save_csv(csv_path, times);
 #endif
 
     // ── shutdown summary ──────────────────────────────────────────────────────
     if (frame_count > 0) {
-        const double avg_full      = total_full_us      / static_cast<double>(frame_count);
-        const double avg_transport = total_transport_us / static_cast<double>(frame_count);
+        const double avg_full      = total_full_ms      / static_cast<double>(frame_count);
+        const double avg_transport = total_transport_ms / static_cast<double>(frame_count);
         RCLCPP_INFO(node->get_logger(), "──────────────────────────────────────────");
         RCLCPP_INFO(node->get_logger(), "Transport time summary");
         RCLCPP_INFO(node->get_logger(), "  Frames received      : %lu",   frame_count);
         RCLCPP_INFO(node->get_logger(), "  Full latency   A→D   : %.1f ms (%.3f us)" , avg_full,      avg_full * 1e3);
         RCLCPP_INFO(node->get_logger(), "  Transport only B→D   : %.1f ms (%.3f us)", avg_transport, avg_transport * 1e3);
-        RCLCPP_INFO(node->get_logger(), "  Transport min B→D    : %.1f ms", min_transport_us);
-        RCLCPP_INFO(node->get_logger(), "  Transport max B→D    : %.1f ms", max_transport_us);
+        RCLCPP_INFO(node->get_logger(), "  Transport min B→D    : %.1f ms", min_transport_ms);
+        RCLCPP_INFO(node->get_logger(), "  Transport max B→D    : %.1f ms", max_transport_ms);
         RCLCPP_INFO(node->get_logger(), "  CSV saved to         : %s",     csv_path.c_str());
-        RCLCPP_INFO(node->get_logger(), " Average processing time: %.4f s", std::accumulate(process_time.begin(), process_time.end(), 0.0) / process_time.size());
-        RCLCPP_INFO(node->get_logger(), " Average transfer time: %.4f s", std::accumulate(transfer_time.begin(), transfer_time.end(), 0.0) / transfer_time.size());
+        RCLCPP_INFO(node->get_logger(), " Average processing time: %.4f s", std::accumulate(times.begin(), times.end(), int64_t{0}, [](int64_t total, const TimesToAnalyze& tm){return total + tm.process_time_ms;}) / times.size());
+        RCLCPP_INFO(node->get_logger(), " Average transfer time: %.4f s", std::accumulate(times.begin(), times.end(), int64_t{0}, [](int64_t total, const TimesToAnalyze& tm){return total + tm.transfer_thread_ms;}) / times.size());
         RCLCPP_INFO(node->get_logger(), "──────────────────────────────────────────");
     } else {
         RCLCPP_WARN(node->get_logger(), "No frames received");

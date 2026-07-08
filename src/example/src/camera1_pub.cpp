@@ -157,13 +157,13 @@ int main(int argc, char ** argv)
                         msg->timestamp    = node->now().nanoseconds();
                 #endif                
 #if REALSENSE
-                auto before_memcpy_depth = node->now().nanoseconds();
+                //auto before_memcpy_depth = node->now().nanoseconds();
                 memcpy(depth_frame.data, depth.get_data(), depth.get_height() * depth.get_stride_in_bytes());
-                auto before_memcpy_color = node->now().nanoseconds();
+                //auto before_memcpy_color = node->now().nanoseconds();
                 memcpy(color_frame.data, color.get_data(), color.get_height() * color.get_stride_in_bytes());
-                auto after_memcpy = node->now().nanoseconds();
-                RCLCPP_INFO(node->get_logger(), "Depth memcpy time: %f ms", static_cast<double>(before_memcpy_color - before_memcpy_depth)/ 1e6);
-                RCLCPP_INFO(node->get_logger(), "Color memcpy time: %f ms", static_cast<double>(after_memcpy - before_memcpy_color)/ 1e6);
+                //auto after_memcpy = node->now().nanoseconds();
+                //RCLCPP_INFO(node->get_logger(), "Depth memcpy time: %f ms", static_cast<double>(before_memcpy_color - before_memcpy_depth)/ 1e6);
+                //RCLCPP_INFO(node->get_logger(), "Color memcpy time: %f ms", static_cast<double>(after_memcpy - before_memcpy_color)/ 1e6);
 
                 msg->image_intrinsics.width = IMG_WIDTH;
                 msg->image_intrinsics.height = IMG_HEIGHT;
@@ -197,7 +197,7 @@ int main(int argc, char ** argv)
 #else
                 msg->publish_timestamp = node->now().nanoseconds();
 #endif
-                RCLCPP_INFO(node->get_logger(), "Publishing image with timestamp: %f", static_cast<double>(msg->publish_timestamp - msg->timestamp)/ 1e6);
+                RCLCPP_INFO(node->get_logger(), "Publishing image with timestamp: %f ms", static_cast<double>(msg->publish_timestamp - msg->timestamp)/ 1e6);
                 pub.publish(userPayload);
             })
             .or_else([](auto& error) {
