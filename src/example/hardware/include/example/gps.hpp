@@ -156,7 +156,10 @@ namespace example
         std::vector<std::array<double, 3>> waypoints_{};
         geodetic_converter::GeodeticConverter geodetic_converter_;
         bool isRefInit{false};
-        double north, east, down;
+        double north_{0.0}, east_{0.0}, down_{0.0};
+        double curr_north_{0.0}, curr_east_{0.0}, curr_down_{0.0};
+        int waypoint_id_{0};
+        int id_for_read_no_gps_{0};
         std::array<double, 3> next_waypoint_{};
 
         FILE *log_file_{nullptr};

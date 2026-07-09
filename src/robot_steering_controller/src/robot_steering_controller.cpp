@@ -668,7 +668,6 @@ RobotSteeringController::RobotSteeringController()
   {
 
     const double corridor = (wheelbase_ * 0.75);
-
     bool in_corridor = (std::abs(point3d_x) < corridor);
 
     if (in_corridor)

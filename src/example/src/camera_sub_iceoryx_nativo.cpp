@@ -69,10 +69,10 @@ struct Frame
 
 struct TimesToAnalyze
 {
-    int64_t full_ms;
-    int64_t transport_ms;
-    int64_t process_time_ms;
-    int64_t transfer_thread_ms;
+    double full_ms;
+    double transport_ms;
+    double process_time_ms;
+    double transfer_thread_ms;
 };  
 
 // ── globals ───────────────────────────────────────────────────────────────────
@@ -125,7 +125,7 @@ std::string make_csv_path(std::string engine_file_path)
 void save_csv(
     const std::string & path,
     const std::vector<TimesToAnalyze> & times,
-    const std::vector<double> & object_identified)
+    const std::vector<int> & object_identified)
 {
     std::ofstream f(path);
     if (!f.is_open()) {
@@ -139,9 +139,9 @@ void save_csv(
           << std::fixed << std::setprecision(2) << times[i].transport_ms << ","
           << std::fixed << std::setprecision(2) << times[i].process_time_ms << ","
           << std::fixed << std::setprecision(2) << times[i].transfer_thread_ms << ","
-          << std::fixed << std::setprecision(2) << object_identified[i] << "n"
+          << object_identified[i] << "\n";
     }
-    std::cout << "[INFO] Saved " << full_us.size()
+    std::cout << "[INFO] Saved " << times.size()
               << " frames to " << path << "\n";
 }
 
@@ -187,7 +187,7 @@ int main(int argc, char ** argv)
     std::signal(SIGTERM, signal_handler);
 
 #if defined(__aarch64__) || defined(_M_ARM64)
-    const std::string engine_file_path = "/home/robotics4farmers/Dev/Robot/src/example/Yolo_Tensorrt/r4f_jetson_yolov8m_seg.onnx";
+    const std::string engine_file_path = "/home/robotics4farmers/Dev/Robot/src/example/Yolo_Tensorrt/r4f_yolo11l_seg.onnx";
 #elif defined(__x86_64__) || defined(_M_X64)
     const std::string engine_file_path = "/home/robotics4farmers/Dev/Robot/src/example/Yolo_Tensorrt/r4f_yolo11l_seg.onnx";
 #endif
@@ -271,21 +271,21 @@ int main(int argc, char ** argv)
             obj_msg.has_object = 0;
 #if GPU 
             auto before = node->now().nanoseconds();
-            //std::vector<Object> objects = process_image(detector, current_frame.color, current_frame.depth, current_frame.intrinsics);
+            std::vector<Object> objects = process_image(detector, current_frame.color, current_frame.depth, current_frame.intrinsics);
             auto after = node->now().nanoseconds();
             auto process_duration = after - before;
 
 #if SAVE_CSV
             current_times.transfer_thread_ms = (static_cast<double>(transfer_duration) / 1'000'000LL); // Convert to seconds
-            current_times.process_time_ms = (process_duration / 1'000'000LL); // Convert to milliseconds
-            times.push(current_times);
+            current_times.process_time_ms = (static_cast<double>(process_duration) / 1'000'000LL); // Convert to milliseconds
+            times.push_back(current_times);
+            object_identified.push_back(objects.size());
 #endif
             //RCLCPP_INFO(node->get_logger(), "Processing time: %.4f ms", process_duration / 1'000'000LL);
 
             
             if (objects.size() > 0)
             {   
-                object_identified.push_back(objects.size());
                 test += 1;
                 //RCLCPP_INFO(node->get_logger(), "Frame %d.", test);
                 //RCLCPP_INFO(node->get_logger(), "%lu objects detected in the current frame.", objects.size());
@@ -317,14 +317,11 @@ int main(int argc, char ** argv)
 
             pub->publish(obj_msg);
         }
-
-        RCLCPP_INFO(node->get_logger(), "Average processing time: %.4f ms", std::accumulate(process_time.begin(), process_time.end(), 0.0) / process_time.size());
-        RCLCPP_INFO(node->get_logger(), "Average transfer time: %.4f ms", std::accumulate(transfer_time.begin(), transfer_time.end(), 0.0) / transfer_time.size());
     });
 #endif
 
     // ── main loop ─────────────────────────────────────────────────────────────
-    while (!sprocess_timetop && rclcpp::ok())
+    while (!stop && rclcpp::ok())
     {
         // tight spin — zero wakeup latency, burns one CPU core
         iox_sub.take()
@@ -365,6 +362,7 @@ int main(int argc, char ** argv)
                 IMG_TYPE_DEPTH,
                 const_cast<uint8_t *>(msg->data_depth.data())
             );
+
 
             image_intrinsics img_intrinsics;
             img_intrinsics.width = msg->image_intrinsics.width;  
@@ -454,7 +452,7 @@ int main(int argc, char ** argv)
     }
 
 #if SAVE_CSV
-    save_csv(csv_path, times);
+    save_csv(csv_path, times, object_identified);
 #endif
 
     // ── shutdown summary ──────────────────────────────────────────────────────
@@ -469,8 +467,8 @@ int main(int argc, char ** argv)
         RCLCPP_INFO(node->get_logger(), "  Transport min B→D    : %.1f ms", min_transport_ms);
         RCLCPP_INFO(node->get_logger(), "  Transport max B→D    : %.1f ms", max_transport_ms);
         RCLCPP_INFO(node->get_logger(), "  CSV saved to         : %s",     csv_path.c_str());
-        RCLCPP_INFO(node->get_logger(), " Average processing time: %.4f s", std::accumulate(times.begin(), times.end(), int64_t{0}, [](int64_t total, const TimesToAnalyze& tm){return total + tm.process_time_ms;}) / times.size());
-        RCLCPP_INFO(node->get_logger(), " Average transfer time: %.4f s", std::accumulate(times.begin(), times.end(), int64_t{0}, [](int64_t total, const TimesToAnalyze& tm){return total + tm.transfer_thread_ms;}) / times.size());
+        RCLCPP_INFO(node->get_logger(), " Average processing time: %ld s", std::accumulate(times.begin(), times.end(), int64_t{0}, [](int64_t total, const TimesToAnalyze& tm){return total + tm.process_time_ms;}) / times.size());
+        RCLCPP_INFO(node->get_logger(), " Average transfer time: %ld s", std::accumulate(times.begin(), times.end(), int64_t{0}, [](int64_t total, const TimesToAnalyze& tm){return total + tm.transfer_thread_ms;}) / times.size());
         RCLCPP_INFO(node->get_logger(), "──────────────────────────────────────────");
     } else {
         RCLCPP_WARN(node->get_logger(), "No frames received");

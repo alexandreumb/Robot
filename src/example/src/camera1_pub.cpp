@@ -45,8 +45,6 @@ constexpr int      WARMUP_CHUNKS = 8; // >= your mempool count for this chunk si
 #if REALSENSE
 constexpr int      IMG_TYPE_DEPTH    = CV_16UC1;      
 constexpr int      IMG_TYPE_COLOR    = CV_8UC3;         // bgr8, 3 bytes per pixel
-constexpr size_t   PIXEL_BYTES_DEPTH = 2;
-constexpr size_t   PIXEL_BYTES_COLOR = 3;
 #else
 constexpr int      IMG_TYPE    = CV_8UC3;         // bgr8, 3 bytes per pixel
 constexpr size_t   PIXEL_BYTES = 3;
@@ -78,15 +76,11 @@ int main(int argc, char ** argv)
 
     auto color_profile = profile.get_stream(RS2_STREAM_COLOR);
     rs2_intrinsics color_intrinsics = color_profile.as<rs2::video_stream_profile>().get_intrinsics();
-
     // get depth scale for metadata
     rs2::depth_sensor depth_sensor = p.get_active_profile()
         .get_device()
         .first<rs2::depth_sensor>();
     float depth_scale = depth_sensor.get_depth_scale();
-
-    const size_t step_depth = IMG_WIDTH * PIXEL_BYTES_DEPTH;
-    const size_t step_color = IMG_WIDTH * PIXEL_BYTES_COLOR;
 
 #else
 
@@ -123,12 +117,16 @@ int main(int argc, char ** argv)
         pub.release(chunk);
     }
 
+    rs2::align align_to_color(RS2_STREAM_COLOR);
+
     // ── main capture + publish loop ───────────────────────────────────────────
     while (!stop)
     {
         
 #if REALSENSE
         rs2::frameset frames   = p.wait_for_frames();
+        frames = align_to_color.process(frames);
+
         rs2::depth_frame depth = frames.get_depth_frame();
         rs2::video_frame color = frames.get_color_frame();
 #endif
@@ -172,8 +170,8 @@ int main(int argc, char ** argv)
                 msg->image_intrinsics.ppx = color_intrinsics.ppx;
                 msg->image_intrinsics.ppy = color_intrinsics.ppy;
                 msg->image_intrinsics.depth_units = depth_scale;
-                msg->step_depth   = static_cast<uint32_t>(step_depth);
-                msg->step_color   = static_cast<uint32_t>(step_color);
+                msg->step_depth   = depth.get_stride_in_bytes();
+                msg->step_color   = color.get_stride_in_bytes();
                 msg->is_bigendian = false;
                 msg->frequency    = CAM_FREQ_HZ;
 

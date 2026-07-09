@@ -22,7 +22,7 @@ namespace example
 {
 
 #define GPS_ACTIVE 0
-#define WAYPOINT_MIN_DIST_SQ 1
+#define WAYPOINT_MIN_DIST_SQ 0.25
 
 //////////////////////////////////////////////////////////////
 // SOCKET
@@ -454,11 +454,11 @@ hardware_interface::return_type GpsHardware::read(
         {
             geodetic_converter_.initialiseReference(copy.latitude, copy.longitude, copy.height);
             geodetic_converter_.geodetic2Ned(copy.latitude, copy.longitude, copy.height,
-                &north, &east, &down);
+                &north_, &east_, &down_);
             
-            if (getNextReferencePoint({north, east, down}, next_waypoint_))
+            if (getNextReferencePoint({north_, east_, down_}, next_waypoint_))
             {
-                RCLCPP_INFO(get_logger(), "Initial reference set to: north=%.2f east=%.2f down=%.2f", north, east, down);
+                RCLCPP_INFO(get_logger(), "Initial reference set to: north=%.2f east=%.2f down=%.2f", north_, east_, down_);
                 isRefInit = true;
             }
             else
@@ -469,18 +469,62 @@ hardware_interface::return_type GpsHardware::read(
         }
         else 
         {
-            geodetic_converter_.geodetic2Ned(copy.latitude, copy.longitude, copy.height, &north, &east, &down);
-            if (getNextReferencePoint({north, east, down}, next_waypoint_))
+            geodetic_converter_.geodetic2Ned(copy.latitude, copy.longitude, copy.height, &north_, &east_, &down_);
+            if (getNextReferencePoint({north_, east_, down_}, next_waypoint_))
             {
                 RCLCPP_INFO(get_logger(), "Next waypoint: north=%.2f east=%.2f down=%.2f", next_waypoint_[0], next_waypoint_[1], next_waypoint_[2]);
             }
             else
             {
-                RCLCPP_INFO(get_logger(), "No more waypoints found. Holding position at: north=%.2f east=%.2f down=%.2f", north, east, down);
+                RCLCPP_INFO(get_logger(), "No more waypoints found. Holding position at: north=%.2f east=%.2f down=%.2f", north_, east_, down_);
             }
         }
     }
+#else
 
+    if (read_)
+    {
+        if (!isRefInit) 
+        {
+            geodetic_converter_.initialiseReference(waypoints_[0][0], waypoints_[0][1], waypoints_[0][2]);
+            geodetic_converter_.geodetic2Ned(waypoints_[0][0], waypoints_[0][1], waypoints_[0][2],
+                &north_, &east_, &down_);
+            
+            if (getNextReferencePoint({north_, east_, down_}, next_waypoint_))
+            {
+                RCLCPP_INFO(get_logger(), "Initial reference set to: north=%.2f east=%.2f down=%.2f", north_, east_, down_);
+                curr_north_ = north_;
+                curr_east_ = east_;
+                curr_down_ = down_;
+                isRefInit = true;
+            }
+            else
+            {
+                RCLCPP_WARN(get_logger(), "No valid initial waypoint found. Waiting for a valid reference point...");
+            }
+
+        }
+        else 
+        {
+            if (getNextReferencePoint({north_, east_, down_}, next_waypoint_))
+            {
+                if (id_for_read_no_gps_ % 20 == 0)
+                {
+                    RCLCPP_INFO(get_logger(), "Next waypoint: north=%.2f east=%.2f down=%.2f", next_waypoint_[0], next_waypoint_[1], next_waypoint_[2]);
+                    north_ = next_waypoint_[0];
+                    east_ = next_waypoint_[1];
+                    down_ = next_waypoint_[2];
+                    id_for_read_no_gps_ = 0;
+                }
+                id_for_read_no_gps_++;
+
+            }
+            else
+            {
+                RCLCPP_INFO(get_logger(), "No more waypoints found. Holding position at: north=%.2f east=%.2f down=%.2f", north_, east_, down_);
+            }
+        }
+    }
 
 #endif
 
@@ -531,16 +575,17 @@ bool GpsHardware::getNextReferencePoint(std::array<double, 3> current_point, std
         }
     }
     
-    for (size_t m = 0; m < waypoints_.size(); m++)
+    while (waypoint_id_ <= waypoints_.size())
     {
-        double distance = pow(waypoints_[m][0] - current_point[0], 2) + pow(waypoints_[m][1] - current_point[1], 2) + pow(waypoints_[m][2] - current_point[2], 2);
+        double distance = pow(waypoints_[waypoint_id_][0] - current_point[0], 2) + pow(waypoints_[waypoint_id_][1] - current_point[1], 2) + pow(waypoints_[waypoint_id_][2] - current_point[2], 2);
         distance = sqrt(distance) - WAYPOINT_MIN_DIST_SQ;
         if (distance > 0)
         {
-            next_point = waypoints_[m];
+            next_point = waypoints_[waypoint_id_];
             waypoint_found = true;
             break;
         }
+        waypoint_id_++;
     }
     return waypoint_found;
 }
