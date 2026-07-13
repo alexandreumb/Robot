@@ -472,7 +472,7 @@ hardware_interface::return_type GpsHardware::read(
             geodetic_converter_.geodetic2Ned(copy.latitude, copy.longitude, copy.height, &north_, &east_, &down_);
             if (getNextReferencePoint({north_, east_, down_}, next_waypoint_))
             {
-                RCLCPP_INFO(get_logger(), "Next waypoint: north=%.2f east=%.2f down=%.2f", next_waypoint_[0], next_waypoint_[1], next_waypoint_[2]);
+                //RCLCPP_INFO(get_logger(), "Next waypoint: north=%.2f east=%.2f down=%.2f", next_waypoint_[0], next_waypoint_[1], next_waypoint_[2]);
             }
             else
             {

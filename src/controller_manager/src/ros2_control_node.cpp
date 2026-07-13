@@ -14,6 +14,10 @@
 #include <iostream> 
 #include <sys/timerfd.h>
 #include <unistd.h>
+#include <sched.h>
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #include "controller_manager/controller_manager.hpp" 
 #include "rclcpp/rclcpp.hpp" 
@@ -63,7 +67,7 @@ int main(int argc, char **argv) {
   const int thread_priority = cm->get_parameter_or<int>("thread_priority", kSchedPriority); 
   RCLCPP_INFO(cm->get_logger(), "Spawning %s RT thread with scheduler priority: %d", cm->get_name(), thread_priority); 
   const double target_ms = 10.0; // 50 Hz 
-  
+
 std::thread cm_thread([cm, thread_priority, use_sim_time, target_ms, cpu_affinity]() 
 {     
     size_t iteration = 0;  // Add this back for tracking
@@ -94,7 +98,23 @@ std::thread cm_thread([cm, thread_priority, use_sim_time, target_ms, cpu_affinit
     { 
         RCLCPP_WARN(cm->get_logger(), "No real-time kernel detected on this system..."); 
     }
-    
+
+    int policy;
+    struct sched_param sp;
+
+    pthread_getschedparam(
+        pthread_self(),
+        &policy,
+        &sp
+    );
+
+    RCLCPP_INFO(
+        cm->get_logger(),
+        "policy=%d priority=%d",
+        policy,
+        sp.sched_priority
+    );
+
     int tfd = timerfd_create(CLOCK_MONOTONIC, 0);
     if (tfd < 0) {
         RCLCPP_ERROR(cm->get_logger(), "timerfd_create failed");
@@ -102,9 +122,14 @@ std::thread cm_thread([cm, thread_priority, use_sim_time, target_ms, cpu_affinit
     }
 
     auto const period_ns = 1'000'000'000LL / cm->get_update_rate();
-    auto previous_time = std::chrono::steady_clock::now(); 
-    auto time_now = std::chrono::duration_cast<std::chrono::nanoseconds>(previous_time.time_since_epoch()).count();
-    auto first_abs_ns = time_now + period_ns;
+
+    timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+
+    uint64_t first_abs_ns =
+      (uint64_t)now.tv_sec * 1000000000ULL +
+      now.tv_nsec +
+      period_ns;
 
     itimerspec ts{};
     ts.it_value.tv_sec  = first_abs_ns / 1'000'000'000LL;
@@ -119,8 +144,8 @@ std::thread cm_thread([cm, thread_priority, use_sim_time, target_ms, cpu_affinit
         RCLCPP_ERROR(cm->get_logger(), "timerfd_settime failed: %s", strerror(errno));
         close(tfd);
         return;
-    }
-
+    } 
+    auto previous_time = std::chrono::steady_clock::now(); 
     while (rclcpp::ok() && !stop_loop) 
     {
         ssize_t n = read(tfd, &expirations, sizeof(expirations));

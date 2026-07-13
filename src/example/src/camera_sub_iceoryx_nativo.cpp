@@ -467,8 +467,8 @@ int main(int argc, char ** argv)
         RCLCPP_INFO(node->get_logger(), "  Transport min B→D    : %.1f ms", min_transport_ms);
         RCLCPP_INFO(node->get_logger(), "  Transport max B→D    : %.1f ms", max_transport_ms);
         RCLCPP_INFO(node->get_logger(), "  CSV saved to         : %s",     csv_path.c_str());
-        RCLCPP_INFO(node->get_logger(), " Average processing time: %ld s", std::accumulate(times.begin(), times.end(), int64_t{0}, [](int64_t total, const TimesToAnalyze& tm){return total + tm.process_time_ms;}) / times.size());
-        RCLCPP_INFO(node->get_logger(), " Average transfer time: %ld s", std::accumulate(times.begin(), times.end(), int64_t{0}, [](int64_t total, const TimesToAnalyze& tm){return total + tm.transfer_thread_ms;}) / times.size());
+        RCLCPP_INFO(node->get_logger(), " Average processing time: %ld ms", std::accumulate(times.begin(), times.end(), int64_t{0}, [](int64_t total, const TimesToAnalyze& tm){return total + tm.process_time_ms;}) / times.size());
+        RCLCPP_INFO(node->get_logger(), " Average transfer time: %ld ms", std::accumulate(times.begin(), times.end(), int64_t{0}, [](int64_t total, const TimesToAnalyze& tm){return total + tm.transfer_thread_ms;}) / times.size());
         RCLCPP_INFO(node->get_logger(), "──────────────────────────────────────────");
     } else {
         RCLCPP_WARN(node->get_logger(), "No frames received");
