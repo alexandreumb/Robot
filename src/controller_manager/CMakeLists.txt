@@ -14,6 +14,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
     rclcpp
     realtime_tools
     std_msgs
+    JetsonGPIO
 )
 
 find_package(ament_cmake REQUIRED)

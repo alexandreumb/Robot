@@ -6,6 +6,12 @@
 #include "iceoryx_posh/popo/untyped_subscriber.hpp"
 #include "iceoryx_posh/runtime/posh_runtime.hpp"
 #include "Shared_Memory_Sensors/header_accessor.h"
+#include "iceoryx_hoofs/cxx/optional.hpp"
+#include "iceoryx_hoofs/posix_wrapper/signal_handler.hpp"
+#include "iceoryx_posh/popo/subscriber.hpp"
+#include "iceoryx_posh/popo/user_trigger.hpp"
+#include "iceoryx_posh/popo/wait_set.hpp"
+#include "iceoryx_posh/runtime/posh_runtime.hpp"
 
 #define GPU 1
 #if GPU
@@ -20,6 +26,7 @@
 #include <sched.h>
 #include <time.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <fstream>
 #include <iomanip>
 #include <sstream>
@@ -33,6 +40,7 @@
 
 using Image8Mb = msgs::msg::Image8Mb;
 using ImgAnalyze = msgs::msg::ImgAnalyzeMsg;
+iox::cxx::optional<iox::popo::WaitSet<>> waitset;
 
 // ── service description — derived from rmw_iceoryx name conversion ────────────
 // rule: {type_name, topic_name, "data"} for all ROS2 topics
@@ -45,15 +53,15 @@ static constexpr char IOX_EVENT[]    = "data";
 static const std::string OUTPUT_DIR = std::string(getenv("HOME")) + "/latency_data/";
 
 // ── options ───────────────────────────────────────────────────────────────────
-#define USE_CLOCK_MONOTONIC  0
-#define USE_RT_SCHEDULING    1
+#define USE_CLOCK_MONOTONIC  1
+#define USE_RT_SCHEDULING    0
 #define USE_CPU_AFFINITY     0
 #define REALSENSE            1
 #define SAVE_CSV             1
 #define PUBLISH_METHOD       1 // 1 = publish with thread
 
-constexpr int      SUBSCRIBER_CORE = 3;
-constexpr int      RT_PRIORITY     = 80;
+constexpr int      SUBSCRIBER_CORE = 4;
+constexpr int      RT_PRIORITY     = 40;
 constexpr int      IMG_TYPE_COLOR    = CV_8UC3;         // bgr8, 3 bytes per pixel
 constexpr int      IMG_TYPE_DEPTH    = CV_16UC1;         
 
@@ -86,7 +94,12 @@ static double   total_full_ms{0.0};
 static double   total_transport_ms{0.0};
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-void signal_handler(int) { stop = true; }
+void signal_handler(int sig IOX_MAYBE_UNUSED) { 
+    stop = true; 
+
+    if (waitset)
+        waitset->markForDestruction();
+}
 
 inline int64_t monotonic_now_ns()
 {
@@ -99,7 +112,7 @@ std::string make_csv_path(std::string engine_file_path)
 {
     std::string model;
     if (engine_file_path.find('11') != std::string::npos) {
-        model = "yolo11";
+        model = "yolo_rt";
     }
     else {
         model = "yolo8";
@@ -183,8 +196,10 @@ std::vector<Object> process_image(YoloV8& detector, const cv::Mat& img_color, co
 
 int main(int argc, char ** argv)
 {
-    std::signal(SIGINT,  signal_handler);
-    std::signal(SIGTERM, signal_handler);
+
+// register signal handler to handle termination of the loop
+auto signalGuard = iox::posix::registerSignalHandler(iox::posix::Signal::INT, signal_handler);
+auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TERM, signal_handler);
 
 #if defined(__aarch64__) || defined(_M_ARM64)
     const std::string engine_file_path = "/home/robotics4farmers/Dev/Robot/src/example/Yolo_Tensorrt/r4f_yolo11l_seg.onnx";
@@ -205,14 +220,14 @@ int main(int argc, char ** argv)
     auto pub = node->create_publisher<msgs::msg::ImgAnalyzeMsg>(
         "robot_steering_controller/reference", qos);
 
-    configure_thread();
-    
+    configure_thread();    
     // ── native iceoryx runtime init ───────────────────────────────────────────
     // Must be called once per process. The runtime name must be unique.
     // This connects directly to RouDi shared memory — same RouDi that
     // rmw_iceoryx uses, so publisher and subscriber see the same segments.
     iox::runtime::PoshRuntime::initRuntime("camera_subscriber_native");
 
+    waitset.emplace();
     // ── native untyped subscriber ─────────────────────────────────────────────
     // UntypedSubscriber gives us a raw void* into shared memory — zero copy.
     // The service description must match exactly what rmw_iceoryx registered:
@@ -249,6 +264,14 @@ int main(int argc, char ** argv)
 #if PUBLISH_METHOD
     std::thread process_image_and_pub([&] ()
     {
+        int policy;
+        sched_param param;
+
+        pthread_getschedparam(pthread_self(), &policy, &param);
+
+        std::cout << "policy = " << policy
+                << ", priority = " << param.sched_priority
+                << '\n';
         while (!stop)
         {
             Frame current_frame;
@@ -320,135 +343,146 @@ int main(int argc, char ** argv)
     });
 #endif
 
+    waitset->attachState(iox_sub, iox::popo::SubscriberState::HAS_DATA).or_else([](auto) {
+        std::cerr << "failed to attach subscriber" << std::endl;
+        std::exit(EXIT_FAILURE);
+    });
+
+
     // ── main loop ─────────────────────────────────────────────────────────────
     while (!stop && rclcpp::ok())
     {
-        // tight spin — zero wakeup latency, burns one CPU core
-        iox_sub.take()
-        .and_then([&](const void * userPayload) {
-            // ── Step 1: timestamp receive — userPayload is direct shm pointer ─
+        auto notifications = waitset->wait();
+
+        for (auto& notification: notifications) {
+            if (notification->doesOriginateFrom(&iox_sub)) {
+                iox_sub.take()
+                .and_then([&](const void * userPayload) {
+                    // ── Step 1: timestamp receive — userPayload is direct shm pointer ─
 #if USE_CLOCK_MONOTONIC
-            const int64_t receive_ns = monotonic_now_ns();
+                    const int64_t receive_ns = monotonic_now_ns();
 #else
-            const int64_t receive_ns = node->now().nanoseconds();
+                    const int64_t receive_ns = node->now().nanoseconds();
 #endif
 
-            const auto * msg = static_cast<const Image8Mb *>(userPayload);
-            // ── Step 3: measure latency ───────────────────────────────────────
-            const double full_ms = static_cast<double>(
-                receive_ns - msg->timestamp) / 1e6; // convert to milliseconds
-            const double transport_ms = static_cast<double>(
-                receive_ns - msg->publish_timestamp) / 1e6; // convert to miliseconds
+                    const auto * msg = static_cast<const Image8Mb *>(userPayload);
+                    // ── Step 3: measure latency ───────────────────────────────────────
+                    const double full_ms = static_cast<double>(
+                        receive_ns - msg->timestamp) / 1e6; // convert to milliseconds
+                    const double transport_ms = static_cast<double>(
+                        receive_ns - msg->publish_timestamp) / 1e6; // convert to miliseconds
 
-            total_full_ms      += full_ms;
-            total_transport_ms += transport_ms;
-            min_transport_ms    = std::min(min_transport_ms, transport_ms);
-            max_transport_ms    = std::max(max_transport_ms, transport_ms);
-            ++frame_count;
+                    total_full_ms      += full_ms;
+                    total_transport_ms += transport_ms;
+                    min_transport_ms    = std::min(min_transport_ms, transport_ms);
+                    max_transport_ms    = std::max(max_transport_ms, transport_ms);
+                    ++frame_count;
 
-            // ── Step 4: construct Mat header over shared memory ───────────────
-            // NO memcpy — Mat points directly at iceoryx chunk.
-            // process_image() must complete before release() is called below.
-            cv::Mat img_color(
-                static_cast<int>(msg->image_intrinsics.height),
-                static_cast<int>(msg->image_intrinsics.width),
-                IMG_TYPE_COLOR,
-                const_cast<uint8_t *>(msg->data_color.data())
-            );
+                    // ── Step 4: construct Mat header over shared memory ───────────────
+                    // NO memcpy — Mat points directly at iceoryx chunk.
+                    // process_image() must complete before release() is called below.
+                    cv::Mat img_color(
+                        static_cast<int>(msg->image_intrinsics.height),
+                        static_cast<int>(msg->image_intrinsics.width),
+                        IMG_TYPE_COLOR,
+                        const_cast<uint8_t *>(msg->data_color.data())
+                    );
 
-            cv::Mat img_depth(
-                static_cast<int>(msg->image_intrinsics.height),
-                static_cast<int>(msg->image_intrinsics.width),
-                IMG_TYPE_DEPTH,
-                const_cast<uint8_t *>(msg->data_depth.data())
-            );
+                    cv::Mat img_depth(
+                        static_cast<int>(msg->image_intrinsics.height),
+                        static_cast<int>(msg->image_intrinsics.width),
+                        IMG_TYPE_DEPTH,
+                        const_cast<uint8_t *>(msg->data_depth.data())
+                    );
 
 
-            image_intrinsics img_intrinsics;
-            img_intrinsics.width = msg->image_intrinsics.width;  
-            img_intrinsics.height = msg->image_intrinsics.height;
-            img_intrinsics.fx = msg->image_intrinsics.fx;
-            img_intrinsics.fy = msg->image_intrinsics.fy;
-            img_intrinsics.ppx = msg->image_intrinsics.ppx;
-            img_intrinsics.ppy = msg->image_intrinsics.ppy;
-            img_intrinsics.depth_units = msg->image_intrinsics.depth_units;
+                    image_intrinsics img_intrinsics;
+                    img_intrinsics.width = msg->image_intrinsics.width;  
+                    img_intrinsics.height = msg->image_intrinsics.height;
+                    img_intrinsics.fx = msg->image_intrinsics.fx;
+                    img_intrinsics.fy = msg->image_intrinsics.fy;
+                    img_intrinsics.ppx = msg->image_intrinsics.ppx;
+                    img_intrinsics.ppy = msg->image_intrinsics.ppy;
+                    img_intrinsics.depth_units = msg->image_intrinsics.depth_units;
 
 #if PUBLISH_METHOD
-            {
-                std::lock_guard<std::mutex> lock(write_mutex);
-                latest_times = TimesToAnalyze{
-                    full_ms,
-                    transport_ms,
-                    0,
-                    0
-                };
+                    {
+                        std::lock_guard<std::mutex> lock(write_mutex);
+                        latest_times = TimesToAnalyze{
+                            full_ms,
+                            transport_ms,
+                            0,
+                            0
+                        };
 
-                latest_frame = Frame{
-                    img_color.clone(),
-                    img_depth.clone(),
-                    img_intrinsics,
-                    msg->timestamp,
-                    node->now().nanoseconds()
-                };
-            }
-            frame_cv.notify_one();
+                        latest_frame = Frame{
+                            img_color.clone(),
+                            img_depth.clone(),
+                            img_intrinsics,
+                            msg->timestamp,
+                            node->now().nanoseconds()
+                        };
+                    }
+                    frame_cv.notify_one();
 #else          
-            ImgAnalyze obj_msg;
-            obj_msg.has_object = 0;
+                    ImgAnalyze obj_msg;
+                    obj_msg.has_object = 0;
 #if GPU 
-            std::vector<Object> objects = process_image(detector, img_color, img_depth, img_intrinsics);
+                    std::vector<Object> objects = process_image(detector, img_color, img_depth, img_intrinsics);
 
-            if (objects.size() > 0)
-            {
-                test += 1;
-                RCLCPP_INFO(node->get_logger(), "Frame %d.", test);
-                //RCLCPP_INFO(node->get_logger(), "%lu objects detected in the current frame.", objects.size());
-                obj_msg.has_object = 1;
-                obj_msg.object.resize(objects.size());
-                for (size_t i = 0; i < objects.size() && i < obj_msg.object.size(); ++i)
-                {
-                    obj_msg.object[i].label = objects[i].label;
-                    obj_msg.object[i].probability = objects[i].probability;
-                    obj_msg.object[i].box.x = objects[i].rect.x;
-                    obj_msg.object[i].box.y = objects[i].rect.y;
-                    obj_msg.object[i].box.width = objects[i].rect.width;
-                    obj_msg.object[i].box.height = objects[i].rect.height;
-                    obj_msg.object[i].kps = objects[i].kps;
-                    obj_msg.object[i].point.pose_x = objects[i].Pose2D.x;
-                    obj_msg.object[i].point.pose_y = objects[i].Pose2D.y;
-                    obj_msg.object[i].point3d.x = objects[i].Pose3D[0];
-                    obj_msg.object[i].point3d.y = objects[i].Pose3D[1];
-                    obj_msg.object[i].point3d.z = objects[i].Pose3D[2];
-                }
-            }                 
-                  
+                    if (objects.size() > 0)
+                    {
+                        test += 1;
+                        RCLCPP_INFO(node->get_logger(), "Frame %d.", test);
+                        //RCLCPP_INFO(node->get_logger(), "%lu objects detected in the current frame.", objects.size());
+                        obj_msg.has_object = 1;
+                        obj_msg.object.resize(objects.size());
+                        for (size_t i = 0; i < objects.size() && i < obj_msg.object.size(); ++i)
+                        {
+                            obj_msg.object[i].label = objects[i].label;
+                            obj_msg.object[i].probability = objects[i].probability;
+                            obj_msg.object[i].box.x = objects[i].rect.x;
+                            obj_msg.object[i].box.y = objects[i].rect.y;
+                            obj_msg.object[i].box.width = objects[i].rect.width;
+                            obj_msg.object[i].box.height = objects[i].rect.height;
+                            obj_msg.object[i].kps = objects[i].kps;
+                            obj_msg.object[i].point.pose_x = objects[i].Pose2D.x;
+                            obj_msg.object[i].point.pose_y = objects[i].Pose2D.y;
+                            obj_msg.object[i].point3d.x = objects[i].Pose3D[0];
+                            obj_msg.object[i].point3d.y = objects[i].Pose3D[1];
+                            obj_msg.object[i].point3d.z = objects[i].Pose3D[2];
+                        }
+                    }                 
+                        
 #endif
-            obj_msg.header.stamp.sec = msg->timestamp / 1'000'000'000LL;
-            obj_msg.header.stamp.nanosec = msg->timestamp % 1'000'000'000LL;
-            obj_msg.middle_header.stamp = node->now();
-            RCLCPP_INFO(node->get_logger(), "Publishing image time: %f ms.", static_cast<double>(node->now().nanoseconds() - msg->timestamp)/1'000'000LL);
+                    obj_msg.header.stamp.sec = msg->timestamp / 1'000'000'000LL;
+                    obj_msg.header.stamp.nanosec = msg->timestamp % 1'000'000'000LL;
+                    obj_msg.middle_header.stamp = node->now();
+                    RCLCPP_INFO(node->get_logger(), "Publishing image time: %f ms.", static_cast<double>(node->now().nanoseconds() - msg->timestamp)/1'000'000LL);
 
-            auto after = node->now();
-            auto process_duration = after.nanoseconds() - receive_ns;
-            process_time.push_back(static_cast<double>(process_duration) / 1'000'000'000.0); // Convert to seconds
+                    auto after = node->now();
+                    auto process_duration = after.nanoseconds() - receive_ns;
+                    process_time.push_back(static_cast<double>(process_duration) / 1'000'000'000.0); // Convert to seconds
 
-            pub->publish(obj_msg);
+                    pub->publish(obj_msg);
 #endif
-            // ── Step 6: release chun  k back to iceoryx pool ────────────────────
-            // Must be called — otherwise the pool exhausts and publisher stalls.
-            iox_sub.release(userPayload);
+                    // ── Step 6: release chun  k back to iceoryx pool ────────────────────
+                    // Must be called — otherwise the pool exhausts and publisher stalls.
+                    iox_sub.release(userPayload);
 
-        })
-        .or_else([](auto &) {
-            // no chunk available — yield to avoid starving other threads
-            #if defined(__x86_64__) || defined(__i386__)
-                __asm__ volatile("pause" ::: "memory");
-            #elif defined(__aarch64__) || defined(__arm__)
-                __asm__ volatile("yield" ::: "memory");
-            #else
-                std::this_thread::yield();
-            #endif
-        });
+                })
+                .or_else([](auto &) {
+                    // no chunk available — yield to avoid starving other threads
+                    #if defined(__x86_64__) || defined(__i386__)
+                        __asm__ volatile("pause" ::: "memory");
+                    #elif defined(__aarch64__) || defined(__arm__)
+                        __asm__ volatile("yield" ::: "memory");
+                    #else
+                        std::this_thread::yield();
+                    #endif
+                });
+            }
+        }
     }
 
 #if SAVE_CSV

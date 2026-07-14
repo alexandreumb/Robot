@@ -18,6 +18,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <JetsonGPIO.h>
 
 #include "controller_manager/controller_manager.hpp" 
 #include "rclcpp/rclcpp.hpp" 
@@ -69,7 +70,9 @@ int main(int argc, char **argv) {
   const double target_ms = 10.0; // 50 Hz 
 
 std::thread cm_thread([cm, thread_priority, use_sim_time, target_ms, cpu_affinity]() 
-{     
+{      
+    GPIO::setmode(GPIO::BOARD);
+    GPIO::setup(13, GPIO::OUT, GPIO::LOW);
     size_t iteration = 0;  // Add this back for tracking
     
     // Set CPU affinity FIRST (before RT scheduling)
@@ -122,7 +125,6 @@ std::thread cm_thread([cm, thread_priority, use_sim_time, target_ms, cpu_affinit
     }
 
     auto const period_ns = 1'000'000'000LL / cm->get_update_rate();
-
     timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
 
@@ -151,6 +153,8 @@ std::thread cm_thread([cm, thread_priority, use_sim_time, target_ms, cpu_affinit
         ssize_t n = read(tfd, &expirations, sizeof(expirations));
         if (n < 0) break;
 
+        GPIO::output(13, GPIO::HIGH);
+
         auto current_time = std::chrono::steady_clock::now(); 
         auto measured_period = std::chrono::duration<double, std::milli>(current_time - previous_time).count(); 
         previous_time = current_time;
@@ -168,8 +172,11 @@ std::thread cm_thread([cm, thread_priority, use_sim_time, target_ms, cpu_affinit
         cm->read(ros_now, dt); 
         cm->update(ros_now, dt); 
         cm->write(ros_now, dt); 
+
+        GPIO::output(13, GPIO::LOW);
     }
     
+    GPIO::cleanup();
     close(tfd);
     
     RCLCPP_INFO(cm->get_logger(), "Control loop completed %zu iterations", iteration);

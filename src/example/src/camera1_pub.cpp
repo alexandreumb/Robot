@@ -16,9 +16,10 @@ using Image8Mb = msgs::msg::Image8Mb;
 // ── must match the subscriber setting ────────────────────────────────────────
 // When USE_CLOCK_MONOTONIC = 1 in the subscriber, set it to 1 here too.
 // Both sides must use the same clock or diffs will be meaningless.
-#define USE_CLOCK_MONOTONIC   0
-#define REALSENSE 1
-
+#define USE_CLOCK_MONOTONIC 1
+#define REALSENSE           1
+#define USE_RT_SCHEDULING   0
+#define USE_CPU_AFFINITY    0
 
 static constexpr char IOX_SERVICE[]  = "msgs/msg/Image8Mb";
 static constexpr char IOX_INSTANCE[] = "/camera";
@@ -39,6 +40,8 @@ inline int64_t monotonic_now_ns()
 
 // ── constants — must match camera and fixed_size_msgs layout ─────────────────
 constexpr int      CAM_INDEX   = 2;
+constexpr int      RT_PRIORITY = 40;     //needs to be inferior to the prority of the nvidia drivers which is 50
+constexpr int      SUBSCRIBER_CORE = 3;
 constexpr int      IMG_WIDTH   = 1280;
 constexpr int      IMG_HEIGHT  = 720;
 constexpr int      WARMUP_CHUNKS = 8; // >= your mempool count for this chunk size
@@ -50,6 +53,29 @@ constexpr int      IMG_TYPE    = CV_8UC3;         // bgr8, 3 bytes per pixel
 constexpr size_t   PIXEL_BYTES = 3;
 #endif
 constexpr uint32_t CAM_FREQ_HZ = 30;              // set to known camera frequency
+
+void configure_thread()
+{
+#if USE_RT_SCHEDULING
+    struct sched_param param{};
+    param.sched_priority = RT_PRIORITY;
+    if (pthread_setschedparam(pthread_self(), SCHED_FIFO, &param) != 0) {
+        std::cerr << "[WARN] Failed to set RT scheduling\n";
+    } else {
+        std::cout << "[INFO] RT scheduling set: SCHED_FIFO priority " << RT_PRIORITY << "\n";
+    }
+#endif
+#if USE_CPU_AFFINITY
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(SUBSCRIBER_CORE, &cpuset);
+    if (pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset) != 0) {
+        std::cerr << "[WARN] Failed to set CPU affinity\n";
+    } else {
+        std::cout << "[INFO] Thread pinned to core " << SUBSCRIBER_CORE << "\n";
+    }
+#endif
+}
 
 int main(int argc, char ** argv)
 {
@@ -63,7 +89,8 @@ int main(int argc, char ** argv)
 
     iox::runtime::PoshRuntime::initRuntime("camera_publisher_native");
     iox::popo::UntypedPublisher pub({IOX_SERVICE, IOX_INSTANCE, IOX_EVENT});
-
+    
+    configure_thread();
     mlockall(MCL_CURRENT | MCL_FUTURE);
 
 #if REALSENSE
