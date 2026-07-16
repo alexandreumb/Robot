@@ -492,12 +492,14 @@ RobotSteeringController::RobotSteeringController()
       reference_velocity_ = current_data->velocity;
       reference_angle_ = current_data->angle;
       manual_override_ = current_data->manual;
+      /*
       if (tracked_object_id_ % 1000 == 0) {
         RCLCPP_INFO(get_node()->get_logger(), "Received new reference velocity: %f", current_data->velocity);
         RCLCPP_INFO(get_node()->get_logger(), "Received new point x: %f", state_interfaces_[NEXT_POS_X].get_value());
         RCLCPP_INFO(get_node()->get_logger(), "Received new point y: %f", state_interfaces_[NEXT_POS_Y].get_value());
         RCLCPP_INFO(get_node()->get_logger(), "Received new point z: %f", state_interfaces_[NEXT_POS_Z].get_value());
       }
+      */
     }
     tracked_object_id_++;
     update_odometry(period);
@@ -546,8 +548,8 @@ RobotSteeringController::RobotSteeringController()
       }
     }
 
-    //utility::reset_controller_reference_teleopcommand_msg(*((input_ref_teleop_.readFromRT())), get_node());
-    //utility::reset_controller_reference_image_msg(*(input_ref_img_.readFromRT()), get_node());
+    utility::reset_controller_reference_teleopcommand_msg(*((input_ref_teleop_.readFromRT())), get_node());
+    utility::reset_controller_reference_image_msg(*(input_ref_img_.readFromRT()), get_node());
 
     // Publish odometry message
     // Compute and store orientation info

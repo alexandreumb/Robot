@@ -21,7 +21,7 @@
 namespace example
 {
 
-#define GPS_ACTIVE 0
+#define GPS_ACTIVE 1
 #define WAYPOINT_MIN_DIST_SQ 0.25
 
 //////////////////////////////////////////////////////////////

@@ -476,11 +476,13 @@ hardware_interface::return_type Robot4FarmersHardware::write(
             sendFrame(can_id, data.data(), can_dlc);
         }
 #else
+            /*
             if (write_direction % 1000 == 0) {
-                RCLCPP_INFO(get_logger(), "Writing command for %s: direction=%.2f", joint.joint_name.c_str(), joint.command.direction);
-                RCLCPP_INFO(get_logger(), "Writing command for %s: velocity=%f", joint.joint_name.c_str(), joint.command.velocity);
+                //RCLCPP_INFO(get_logger(), "Writing command for %s: direction=%.2f", joint.joint_name.c_str(), joint.command.direction);
+                //RCLCPP_INFO(get_logger(), "Writing command for %s: velocity=%f", joint.joint_name.c_str(), joint.command.velocity);
             }
             write_direction++;
+            */
         }
 #endif
     }
