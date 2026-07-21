@@ -150,46 +150,40 @@ void Robot4FarmersHardware::canLoop()
             continue;
         } else {
             // Process the CAN frame (frame.can_id, frame.data, frame.can_dlc)
+            switch (frame.can_id)
             {
-                std::lock_guard<std::mutex> lock(can_mutex_);
-                switch (frame.can_id)
-                {
-                    case IDMCIFront(Torque): // Front Velocity
-                        latest_can_data_.velocity_front_left = static_cast<double>(static_cast<int16_t>((frame.data[0] << 8) | frame.data[1]))/100;
-                        latest_can_data_.velocity_front_right = static_cast<double>(static_cast<int16_t>((frame.data[2] << 8) | frame.data[3]))/100;
-                        RCLCPP_INFO(get_logger(), "velocity: %f", latest_can_data_.velocity_front_right);
-                        break;
+                case IDMCIFront(Torque): // Front Velocity
+                    thread_data_.velocity_front_left = static_cast<double>(static_cast<int16_t>((frame.data[0] << 8) | frame.data[1]))/100;
+                    thread_data_.velocity_front_right = static_cast<double>(static_cast<int16_t>((frame.data[2] << 8) | frame.data[3]))/100;
+                    break;
 
-                    case IDMCIRear(Torque): // Rear Velocity
-                        latest_can_data_.velocity_rear_left = static_cast<double>(static_cast<int16_t>((frame.data[0] << 8) | frame.data[1]))/100;
-                        latest_can_data_.velocity_rear_right = static_cast<double>(static_cast<int16_t>((frame.data[2] << 8) | frame.data[3]))/100;
-                        RCLCPP_INFO(get_logger(), "velocity: %f", latest_can_data_.velocity_front_right);
-                        break;
+                case IDMCIRear(Torque): // Rear Velocity
+                    thread_data_.velocity_rear_left = static_cast<double>(static_cast<int16_t>((frame.data[0] << 8) | frame.data[1]))/100;
+                    thread_data_.velocity_rear_right = static_cast<double>(static_cast<int16_t>((frame.data[2] << 8) | frame.data[3]))/100;
+                    break;
 
-                    case IDMCIFront(Temperature): // Front Temperature
-                        latest_can_data_.temperature_front_left = ((frame.data[0] << 8) | frame.data[1]) * factor; 
-                        latest_can_data_.temperature_front_right = ((frame.data[2] << 8) | frame.data[3]) * factor; 
+                case IDMCIFront(Temperature): // Front Temperature
+                    thread_data_.temperature_front_left = ((frame.data[0] << 8) | frame.data[1]) * factor; 
+                    thread_data_.temperature_front_right = ((frame.data[2] << 8) | frame.data[3]) * factor; 
 
-                    case IDMCIRear(Temperature): // Rear Temperature
-                        latest_can_data_.temperature_rear_left = ((frame.data[0] << 8) | frame.data[1]) * factor; 
-                        latest_can_data_.temperature_rear_right = ((frame.data[2] << 8) | frame.data[3]) * factor; 
+                case IDMCIRear(Temperature): // Rear Temperature
+                    thread_data_.temperature_rear_left = ((frame.data[0] << 8) | frame.data[1]) * factor; 
+                    thread_data_.temperature_rear_right = ((frame.data[2] << 8) | frame.data[3]) * factor; 
 
-                    case IDMCIFront(Throttle): // Front Throttle
-                        latest_can_data_.throttle_front_left = static_cast<double>(static_cast<int16_t>((frame.data[0] << 8) | frame.data[1]));
-                        latest_can_data_.throttle_front_right = static_cast<double>(static_cast<int16_t>((frame.data[2] << 8) | frame.data[3]));
-                        RCLCPP_INFO(get_logger(), "throttle: %f", latest_can_data_.throttle_front_right);
-                        break;
+                case IDMCIFront(Throttle): // Front Throttle
+                    thread_data_.throttle_front_left = static_cast<double>(static_cast<int16_t>((frame.data[0] << 8) | frame.data[1]));
+                    thread_data_.throttle_front_right = static_cast<double>(static_cast<int16_t>((frame.data[2] << 8) | frame.data[3]));
+                    break;
 
-                    case IDMCIRear(Throttle): // Rear Throttle
-                        latest_can_data_.throttle_rear_left = static_cast<double>(static_cast<int16_t>((frame.data[0] << 8) | frame.data[1]));
-                        latest_can_data_.throttle_rear_right = static_cast<double>(static_cast<int16_t>((frame.data[2] << 8) | frame.data[3]));
-                        RCLCPP_INFO(get_logger(), "throttle: %f", latest_can_data_.throttle_rear_right);
-                        break;
-                    default:
-                        // unknown CAN ID
-                        break;
-                }
+                case IDMCIRear(Throttle): // Rear Throttle
+                    thread_data_.throttle_rear_left = static_cast<double>(static_cast<int16_t>((frame.data[0] << 8) | frame.data[1]));
+                    thread_data_.throttle_rear_right = static_cast<double>(static_cast<int16_t>((frame.data[2] << 8) | frame.data[3]));
+                    break;
+                default:
+                    // unknown CAN ID
+                    break;
             }
+            latest_can_data.writeFromNonRT(thread_data_);
         }
     }
 }
@@ -394,42 +388,40 @@ hardware_interface::return_type Robot4FarmersHardware::read(
     const rclcpp::Time &, const rclcpp::Duration &period)
 {
 #if CAN_AVAILABLE
+    auto data = *latest_can_data_.readFromRT();
+    for (auto &joint : joints_)
     {
-        std::lock_guard<std::mutex> lock(can_mutex_);
-        for (auto &joint : joints_)
+        if (joint.joint_name.find("rear") != std::string::npos)
         {
-            if (joint.joint_name.find("rear") != std::string::npos)
-            {
-                joint.state.velocity_rear_left = latest_can_data_.velocity_rear_left;
-                joint.state.velocity_rear_right = latest_can_data_.velocity_rear_right;
-                joint.state.velocity_rear_timestamp = latest_can_data_.velocity_rear_timestamp;
-                joint.state.temperature_rear_left = latest_can_data_.temperature_rear_left;
-                joint.state.temperature_rear_right = latest_can_data_.temperature_rear_right;
-                joint.state.temperature_rear_timestamp = latest_can_data_.temperature_rear_timestamp;
-                joint.state.throttle_rear_left = latest_can_data_.throttle_rear_left;
-                joint.state.throttle_rear_right = latest_can_data_.throttle_rear_right;
-                joint.state.throttle_rear_timestamp = latest_can_data_.throttle_rear_timestamp;
-            }
-            else if (joint.joint_name.find("front") != std::string::npos)
-            {                
-                joint.state.velocity_front_left = latest_can_data_.velocity_front_left;
-                joint.state.velocity_front_right = latest_can_data_.velocity_front_right;
-                joint.state.velocity_front_timestamp = latest_can_data_.velocity_front_timestamp;
-                joint.state.temperature_front_left = latest_can_data_.temperature_front_left;
-                joint.state.temperature_front_right = latest_can_data_.temperature_front_right;
-                joint.state.temperature_front_timestamp = latest_can_data_.temperature_front_timestamp;
-                joint.state.throttle_front_left = latest_can_data_.throttle_front_left;
-                joint.state.throttle_front_right = latest_can_data_.throttle_front_right;
-                joint.state.throttle_front_timestamp = latest_can_data_.throttle_front_timestamp;
-            }
-            else if (joint.joint_name.find("direction") != std::string::npos)
-            {
-                joint.state.steering_angle = latest_can_data_.steering_angle;
-                joint.state.steering_angle_timestamp = latest_can_data_.steering_angle_timestamp;
-                joint.state.steering_torque_high = latest_can_data_.steering_torque_high;
-                joint.state.steering_torque_low = latest_can_data_.steering_torque_low;
-                joint.state.steering_torque_timestamp = latest_can_data_.steering_torque_timestamp;
-            }
+            joint.state.velocity_rear_left = data.velocity_rear_left;
+            joint.state.velocity_rear_right = data.velocity_rear_right;
+            joint.state.velocity_rear_timestamp = data.velocity_rear_timestamp;
+            joint.state.temperature_rear_left = data.temperature_rear_left;
+            joint.state.temperature_rear_right = data.temperature_rear_right;
+            joint.state.temperature_rear_timestamp = data.temperature_rear_timestamp;
+            joint.state.throttle_rear_left = data_.throttle_rear_left;
+            joint.state.throttle_rear_right = data_.throttle_rear_right;
+            joint.state.throttle_rear_timestamp = data_.throttle_rear_timestamp;
+        }
+        else if (joint.joint_name.find("front") != std::string::npos)
+        {                
+            joint.state.velocity_front_left = data_.velocity_front_left;
+            joint.state.velocity_front_right = data_.velocity_front_right;
+            joint.state.velocity_front_timestamp = data_.velocity_front_timestamp;
+            joint.state.temperature_front_left = data_.temperature_front_left;
+            joint.state.temperature_front_right = data_.temperature_front_right;
+            joint.state.temperature_front_timestamp = data_.temperature_front_timestamp;
+            joint.state.throttle_front_left = data_.throttle_front_left;
+            joint.state.throttle_front_right = data_.throttle_front_right;
+            joint.state.throttle_front_timestamp = data_.throttle_front_timestamp;
+        }
+        else if (joint.joint_name.find("direction") != std::string::npos)
+        {
+            joint.state.steering_angle = data_.steering_angle;
+            joint.state.steering_angle_timestamp = data_.steering_angle_timestamp;
+            joint.state.steering_torque_high = data_.steering_torque_high;
+            joint.state.steering_torque_low = data_.steering_torque_low;
+            joint.state.steering_torque_timestamp = data_.steering_torque_timestamp;
         }
     }
 #endif

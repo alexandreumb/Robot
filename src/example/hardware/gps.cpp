@@ -238,12 +238,7 @@ void GpsHardware::ethernetLoop()
             an_packet_free(&an_packet_);
         }
 
-        // ── 3. Publicar buffer protegido por mutex ──────────────
-        {
-            std::lock_guard<std::mutex> lock(gps_mutex_);
-            latest_data_ = buffer;
-        }
-
+        latest_data_.writeFromNonRT(buffer);
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
@@ -288,7 +283,6 @@ hardware_interface::CallbackReturn GpsHardware::on_configure(
 #if GPS_ACTIVE
     an_decoder_initialise(&an_decoder_);
     gnss_fix_type_prev_ = -1;
-    latest_data_        = GPSData{};
 #endif
 
     RCLCPP_INFO(get_logger(), "GpsHardware configured (ip=%s port=%d)", ip_.c_str(), port_);
@@ -443,10 +437,7 @@ hardware_interface::return_type GpsHardware::read(
     GPSData copy;
 
 #if GPS_ACTIVE
-    {
-        std::lock_guard<std::mutex> lock(gps_mutex_);
-        copy = latest_data_;
-    }
+        copy = *latest_data_.readFromRT();
 
     if (read_)
     {

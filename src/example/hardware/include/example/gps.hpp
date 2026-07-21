@@ -7,6 +7,7 @@
 #include "gnss_compass_utils/ins_packets.h"
 #include "example/geodetic_conv.hpp"
 
+#include <realtime_tools/realtime_buffer.hpp>
 #include <hardware_interface/sensor_interface.hpp>
 #include <hardware_interface/types/hardware_interface_return_values.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -145,8 +146,7 @@ namespace example
         // ── Thread / dados ─────────────────────────────────────
         std::atomic<bool> running_{false};
         std::thread reader_thread_;
-        std::mutex gps_mutex_;
-        GPSData latest_data_;   // protegido por gps_mutex_
+        realtime_tools::RealtimeBuffer<GPSData> latest_data_;
 
         // ── Joints (sensor interfaces) ──────────────────────────
         std::vector<GpsJoint> joints_;

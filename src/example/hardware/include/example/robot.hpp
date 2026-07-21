@@ -1,5 +1,5 @@
 #pragma once
-
+#include <realtime_tools/realtime_buffer.hpp>
 #include <hardware_interface/system_interface.hpp>
 #include <hardware_interface/types/hardware_interface_return_values.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -177,10 +177,10 @@ namespace example
         bool prev_reverse{false};
 
         std::thread can_thread_;
-        std::mutex can_mutex_;
         std::mutex can_fd_mutex_;
 
-        JointValue latest_can_data_; // protegido por can_mutex_
+        realtime_tools::RealtimeBuffer<JointValue> latest_can_data_;
+        JointValue thread_data_;
 
         int write_front {0};
         int write_rear {0};
