@@ -131,6 +131,8 @@ ament_target_dependencies(example
 )
 pluginlib_export_plugin_description_file(hardware_interface example.xml)
 
+ament_export_include_directories(include)
+ament_export_libraries(example)
 # ----------------------------
 # Install targets
 # ----------------------------

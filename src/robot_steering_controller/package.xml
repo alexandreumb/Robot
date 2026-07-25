@@ -38,6 +38,7 @@
   <depend>controller_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>msgs</depend>
+  <depend>example</depend>
 
   <test_depend>ament_cmake_gmock</test_depend>
   <test_depend>controller_manager</test_depend>

@@ -15,6 +15,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
     realtime_tools
     std_msgs
     PkgConfig
+    example
 )
 
 find_package(ament_cmake REQUIRED)

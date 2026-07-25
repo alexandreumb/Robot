@@ -23,6 +23,7 @@
 #include "controller_manager/controller_manager.hpp" 
 #include "rclcpp/rclcpp.hpp" 
 #include "realtime_tools/realtime_helpers.hpp" 
+#include "example/include/mmio_gpio.hpp"
 
 using namespace std::chrono_literals; 
 namespace { 
@@ -72,21 +73,7 @@ int main(int argc, char **argv) {
 
 std::thread cm_thread([cm, thread_priority, use_sim_time, target_ms, cpu_affinity]() 
 {      
-    auto GPIO_LINE = 108;
-    gpiod_chip *chip = gpiod_chip_open("/dev/gpiochip0");   
-    if (!chip) {
-        throw std::runtime_error("Failed to open gpiochip0");
-    }
-
-    gpiod_line *line = gpiod_chip_get_line(chip, GPIO_LINE);
-    if (!line) {
-        throw std::runtime_error("Failed to get GPIO line");
-    }
-
-    if (gpiod_line_request_output(line, "ros2_control", 0) < 0) {
-        throw std::runtime_error("Failed to request output");
-    }
-
+    MmioGpio gpio();
     RCLCPP_INFO(cm->get_logger(), "osciloscope fired");
     size_t iteration = 0;  // Add this back for tracking
     
@@ -168,7 +155,7 @@ std::thread cm_thread([cm, thread_priority, use_sim_time, target_ms, cpu_affinit
         ssize_t n = read(tfd, &expirations, sizeof(expirations));
         if (n < 0) break;
 
-        gpiod_line_set_value(line, 1);
+        gpio.set(true);
 
         auto current_time = std::chrono::steady_clock::now(); 
         auto measured_period = std::chrono::duration<double, std::milli>(current_time - previous_time).count(); 
@@ -188,11 +175,9 @@ std::thread cm_thread([cm, thread_priority, use_sim_time, target_ms, cpu_affinit
         cm->update(ros_now, dt); 
         cm->write(ros_now, dt); 
 
-        gpiod_line_set_value(line, 0);
+        gpio.set(false);
     }
     
-    gpiod_line_release(line);
-    gpiod_chip_close(chip);
     close(tfd);
     
     RCLCPP_INFO(cm->get_logger(), "Control loop completed %zu iterations", iteration);

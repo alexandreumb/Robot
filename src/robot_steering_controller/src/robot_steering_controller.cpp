@@ -441,8 +441,10 @@ RobotSteeringController::RobotSteeringController()
   controller_interface::return_type RobotSteeringController::update(
     const rclcpp::Time & time, const rclcpp::Duration & period)
   {
+    //gpio.set(true);
     auto current_data = *(input_ref_teleop_.readFromRT());
     auto current_objects = *(input_ref_img_.readFromRT());
+    //gpio.set(false);
 
     //const auto t = time - (*(input_ref_img_.readFromRT()))->middle_header.stamp;
     //RCLCPP_INFO(get_node()->get_logger(), "Update middle: %f seconds", t.seconds());

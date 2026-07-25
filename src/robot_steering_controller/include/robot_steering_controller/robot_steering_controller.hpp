@@ -21,6 +21,8 @@
   #include "msgs/msg/img_analyze_msg.hpp"
   #include "msgs/msg/teleop_command.hpp"
   #include "msgs/msg/object_struct.hpp"
+  
+  #include "example/include/mmio_gpio.hpp"
 
   #include <utility>
   #include <limits>
@@ -173,6 +175,7 @@
     void halt();
     int object_detection(int label, double point3d_x, double point3d_y, double point3d_z);
 
+    //MmioGpio gpio();
     int halt_{0};
     double stop_distance_{0.0};
     double slow_distance_{0.0};
