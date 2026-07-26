@@ -70,8 +70,9 @@ public:
 
         // Map enough to cover the highest offset we reference (enable_config
         // is lowest at 0x12800, output_value highest at 0x12810) plus margin.
-        const size_t map_size = 0x1000; // one page's worth of register space
-
+        uint32_t max_offset = std::max({output_value_off, output_control_off, enable_config_off});
+        size_t map_size = ((page_offset_ + max_offset + sizeof(uint32_t) + page_size - 1) / page_size) * page_size;
+        
         void* map = mmap(
             nullptr,
             map_size + page_offset_,

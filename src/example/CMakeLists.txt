@@ -37,6 +37,8 @@ install(
   DESTINATION share/${PROJECT_NAME}/worlds
 )
 
+add_executable(gpio_verify src/gpio_verify.cpp)
+
 # ----------------------------
 # Camera nodes
 # ----------------------------
