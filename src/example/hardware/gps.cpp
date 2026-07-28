@@ -21,7 +21,7 @@
 namespace example
 {
 
-#define GPS_ACTIVE 1
+#define GPS_ACTIVE 0
 #define WAYPOINT_MIN_DIST_SQ 0.25
 
 //////////////////////////////////////////////////////////////
@@ -292,6 +292,27 @@ hardware_interface::CallbackReturn GpsHardware::on_configure(
 hardware_interface::CallbackReturn GpsHardware::on_activate(
     const rclcpp_lifecycle::State &)
 {
+    /*
+    RCLCPP_INFO(get_logger(), "GpsHardware Activate");
+    auto GPIO_LINE = 108;
+    chip = gpiod_chip_open("/dev/gpiochip0");   
+    if (!chip) {
+        throw std::runtime_error("Failed to open gpiochip0");
+    }
+    RCLCPP_INFO(get_logger(), "GpsHardware Activate");
+
+    line = gpiod_chip_get_line(chip, GPIO_LINE);
+    if (!line) {
+        throw std::runtime_error("Failed to get GPIO line");
+    }
+    RCLCPP_INFO(get_logger(), "GpsHardware Activate");
+
+    if (gpiod_line_request_output(line, "example", 0) < 0) {
+        throw std::runtime_error("Failed to request output");
+    }
+    RCLCPP_INFO(get_logger(), "GpsHardware Activate");
+    */
+    
     if (read_)
     {
         // Load entire file into waypoints vector upfront
@@ -368,6 +389,8 @@ hardware_interface::CallbackReturn GpsHardware::on_activate(
 hardware_interface::CallbackReturn GpsHardware::on_deactivate(
     const rclcpp_lifecycle::State &)
 {
+    //gpiod_line_release(line);
+    //gpiod_chip_close(chip);
 #if GPS_ACTIVE
     running_ = false;
 
@@ -434,7 +457,7 @@ GpsHardware::export_state_interfaces()
 hardware_interface::return_type GpsHardware::read(
     const rclcpp::Time &, const rclcpp::Duration &)
 {
-    GPSData copy;
+    //gpiod_line_set_value(line, 1);
 
 #if GPS_ACTIVE
         copy = *latest_data_.readFromRT();
@@ -525,14 +548,18 @@ hardware_interface::return_type GpsHardware::read(
         joint.state.next_point_north = next_waypoint_[0];
         joint.state.next_point_east = next_waypoint_[1];
         joint.state.next_point_down = next_waypoint_[2];
+        /*
         if (i % 100 == 0)
         {
-//            RCLCPP_INFO(get_logger(), "Writing command for %s: gnss_fix=%.2f", joint.joint_name.c_str(), joint.state.gnss_fix);
-//            RCLCPP_INFO(get_logger(), "Writing command for %s: acc=%.2f", joint.joint_name.c_str(), joint.state.accelerometer_y);
-//            RCLCPP_INFO(get_logger(), "Writing command for %s: rollx=%.2f", joint.joint_name.c_str(), joint.state.roll);
+            RCLCPP_INFO(get_logger(), "Writing command for %s: gnss_fix=%.2f", joint.joint_name.c_str(), joint.state.gnss_fix);
+            RCLCPP_INFO(get_logger(), "Writing command for %s: acc=%.2f", joint.joint_name.c_str(), joint.state.accelerometer_y);
+            RCLCPP_INFO(get_logger(), "Writing command for %s: rollx=%.2f", joint.joint_name.c_str(), joint.state.roll);
         }
+        */
     }
     i++;
+    
+    //gpiod_line_set_value(line, 0);
 
     return hardware_interface::return_type::OK;
 }

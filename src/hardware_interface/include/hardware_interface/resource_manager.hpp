@@ -20,6 +20,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <gpiod.h>
 
 #include "hardware_interface/hardware_component_info.hpp"
 #include "hardware_interface/hardware_info.hpp"
@@ -436,6 +437,9 @@ private:
   HardwareReadWriteStatus read_write_status;
 
   bool is_urdf_loaded__ = false;
+
+  gpiod_chip *chip;
+  gpiod_line *line;
 };
 
 }  // namespace hardware_interface

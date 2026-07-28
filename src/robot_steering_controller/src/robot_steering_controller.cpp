@@ -20,6 +20,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <fstream>
 
 #include "tf2/transform_datatypes.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
@@ -31,6 +32,12 @@ namespace utility
   using TeleopCommand =
     robot_steering_controller::RobotSteeringController::TeleopCommand;
 
+  inline int64_t monotonic_now_ns()
+  {
+      struct timespec ts;
+      clock_gettime(CLOCK_MONOTONIC, &ts);
+      return static_cast<int64_t>(ts.tv_sec) * 1'000'000'000LL + ts.tv_nsec;
+  }
   // called from RT control loop
   void reset_controller_reference_image_msg(
     const std::shared_ptr<ImgAnalyzeMsg> & msg,
@@ -258,13 +265,6 @@ RobotSteeringController::RobotSteeringController()
       state_interfaces_[VEL_NORTH].get_value();
     const double velocity_east =
       state_interfaces_[VEL_EAST].get_value();
-  
-    if (tracked_object_id_ % 100 == 0)
-    {
-      //RCLCPP_INFO(get_node()->get_logger(), "Updating odometry with heading: %f, position_x: %f, position_y: %f, velocity_north: %f, velocity_east: %f",
-      //  heading, position_x, position_y, velocity_north, velocity_east);
-      //RCLCPP_INFO(get_node()->get_logger(), "Next position: x: %f, y: %f, z: %f", next_position_x, next_position_y, next_position_z);
-    };
 
     odometry_.update_from_position(
       heading, position_x, position_y, position_z,
@@ -416,6 +416,23 @@ RobotSteeringController::RobotSteeringController()
   controller_interface::CallbackReturn RobotSteeringController::on_activate(
     const rclcpp_lifecycle::State & /*previous_state*/)
   {
+    //gpio.configure_pactl();
+    /*
+    auto GPIO_LINE = 108;
+    chip = gpiod_chip_open("/dev/gpiochip0");   
+    if (!chip) {
+      throw std::runtime_error("Failed to open gpiochip0");
+    }
+    
+    line = gpiod_chip_get_line(chip, GPIO_LINE);
+    if (!line) {
+      throw std::runtime_error("Failed to get GPIO line");
+    }
+    
+    if (gpiod_line_request_output(line, "ros2_control", 0) < 0) {
+      throw std::runtime_error("Failed to request output");
+    }
+    */
     utility::reset_controller_reference_image_msg(*(input_ref_img_.readFromRT()), get_node());
     utility::reset_controller_reference_teleopcommand_msg(*((input_ref_teleop_.readFromRT())), get_node());
     reference_velocity_ = 0.0;
@@ -434,27 +451,36 @@ RobotSteeringController::RobotSteeringController()
     last_angle_ = std::numeric_limits<double>::quiet_NaN();
     reference_velocity_ = std::numeric_limits<double>::quiet_NaN();
     reference_angle_ = std::numeric_limits<double>::quiet_NaN();
-
+    //gpiod_line_release(line);
+    //gpiod_chip_close(chip);
+    std::ofstream myfile("/home/robotics4farmers/Dev/time.csv");
+    int vsize = execute_time.size();
+    for (int n=0; n<vsize; n++)
+    {
+        myfile << execute_time[n] << std::endl;
+    }
     return controller_interface::CallbackReturn::SUCCESS;
   }
 
   controller_interface::return_type RobotSteeringController::update(
     const rclcpp::Time & time, const rclcpp::Duration & period)
   {
+    //gpiod_line_set_value(line, 1);  
     //gpio.set(true);
     auto current_data = *(input_ref_teleop_.readFromRT());
+    //3-6 microseconds with camera
     auto current_objects = *(input_ref_img_.readFromRT());
-    //gpio.set(false);
+    //gpiod_line_set_value(line, 0);  
 
     //const auto t = time - (*(input_ref_img_.readFromRT()))->middle_header.stamp;
     //RCLCPP_INFO(get_node()->get_logger(), "Update middle: %f seconds", t.seconds());
     const auto age_of_last_command = time - (*(input_ref_img_.readFromRT()))->header.stamp; 
     //RCLCPP_INFO(get_node()->get_logger(), "Update 1: %f seconds", age_of_last_command.seconds());
-
     if (current_objects->has_object == 1)
     {
-      const auto timeout =
-      age_of_last_command > ref_timeout_ && ref_timeout_ != rclcpp::Duration::from_seconds(0);
+      //3-9 miocroseconds
+      const auto timeout = false;
+
       if (!timeout)
       {
         object_tracking_ +=1;
@@ -468,13 +494,13 @@ RobotSteeringController::RobotSteeringController()
           if (car_movement == EMERGENCY_STOP)
           {
             halt_ = car_movement;
-            RCLCPP_INFO(get_node()->get_logger(), "Halting the robot due to detected object.");
+            //RCLCPP_INFO(get_node()->get_logger(), "Halting the robot due to detected object.");
             break;
           }
           else if (car_movement == SLOW_DOWN)
           {
             halt_ = car_movement;
-            RCLCPP_INFO(get_node()->get_logger(), "Slowing down the robot due to detected object.");
+            //RCLCPP_INFO(get_node()->get_logger(), "Slowing down the robot due to detected object.");
           }
           else
           {
@@ -487,31 +513,21 @@ RobotSteeringController::RobotSteeringController()
         //RCLCPP_INFO(get_node()->get_logger(), "Object tracking count: %d", object_tracking_);
       }
     }
-
-
+    
     if (!std::isnan(current_data->velocity) && !std::isnan(current_data->angle))
     {
       reference_velocity_ = current_data->velocity;
       reference_angle_ = current_data->angle;
       manual_override_ = current_data->manual;
-      /*
-      if (tracked_object_id_ % 1000 == 0) {
-        RCLCPP_INFO(get_node()->get_logger(), "Received new reference velocity: %f", current_data->velocity);
-        RCLCPP_INFO(get_node()->get_logger(), "Received new point x: %f", state_interfaces_[NEXT_POS_X].get_value());
-        RCLCPP_INFO(get_node()->get_logger(), "Received new point y: %f", state_interfaces_[NEXT_POS_Y].get_value());
-        RCLCPP_INFO(get_node()->get_logger(), "Received new point z: %f", state_interfaces_[NEXT_POS_Z].get_value());
-      }
-      */
     }
-    tracked_object_id_++;
+
     update_odometry(period);
 
     if (!std::isnan(reference_velocity_) && !std::isnan(reference_angle_))
     {
       const auto age_of_last_command = time - (*(input_ref_teleop_.readFromRT()))->header.stamp;
       //RCLCPP_INFO(get_node()->get_logger(), "Update 2: %f seconds", age_of_last_command.seconds());  
-      const auto timeout =
-      age_of_last_command > ref_timeout_ && ref_timeout_ != rclcpp::Duration::from_seconds(0);
+      const auto timeout = false;
 
       // store (for open loop odometry) and set commands
       last_velocity_ = timeout ? 0.0 : reference_velocity_;
@@ -546,12 +562,13 @@ RobotSteeringController::RobotSteeringController()
           command_interfaces_[CMD_STEERING].set_value(reference_angle_);
         }
         //RCLCPP_INFO(get_node()->get_logger(), "Setting velocity to %f and steering to %f.", last_velocity_, last_angle_);
-
+        
       }
     }
 
-    utility::reset_controller_reference_teleopcommand_msg(*((input_ref_teleop_.readFromRT())), get_node());
-    utility::reset_controller_reference_image_msg(*(input_ref_img_.readFromRT()), get_node());
+    //gpio.set(false);
+    //utility::reset_controller_reference_teleopcommand_msg(*((input_ref_teleop_.readFromRT())), get_node());
+    //utility::reset_controller_reference_image_msg(*(input_ref_img_.readFromRT()), get_node());
 
     // Publish odometry message
     // Compute and store orientation info
@@ -641,8 +658,7 @@ RobotSteeringController::RobotSteeringController()
         msg->header.stamp = get_node()->now();
     }
     const auto age_of_last_command = get_node()->now() - msg->middle_header.stamp;
-    //RCLCPP_INFO(get_node()->get_logger(), "Reference callback: %f seconds", age_of_last_command.seconds());
-
+    
     if (ref_timeout_ == rclcpp::Duration::from_seconds(0) || age_of_last_command <= ref_timeout_)
     {
       input_ref_img_.writeFromNonRT(msg);

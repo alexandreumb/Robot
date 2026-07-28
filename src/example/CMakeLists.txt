@@ -24,12 +24,13 @@ find_package(realsense2 REQUIRED)
 find_package(msgs REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 find_package(nlohmann_json REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GPIOD REQUIRED libgpiod)
 
 # Include directories
 include_directories(
   include
   ${OpenCV_INCLUDE_DIRS}
-
 )
 
 install(
@@ -127,9 +128,13 @@ add_library(example SHARED
 target_include_directories(example PUBLIC
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/hardware/include>
   $<INSTALL_INTERFACE:include/example>
+  ${GPIOD_INCLUDE_DIRS}
+)
+target_link_libraries(example
+  ${GPIOD_LIBRARIES}
 )
 ament_target_dependencies(example
-  rclcpp rclcpp_lifecycle hardware_interface controller_manager pluginlib serial gnss_compass_utils
+  rclcpp rclcpp_lifecycle hardware_interface controller_manager pluginlib serial gnss_compass_utils PkgConfig
 )
 pluginlib_export_plugin_description_file(hardware_interface example.xml)
 

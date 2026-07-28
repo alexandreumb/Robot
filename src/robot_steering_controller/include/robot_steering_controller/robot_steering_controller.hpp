@@ -22,10 +22,11 @@
   #include "msgs/msg/teleop_command.hpp"
   #include "msgs/msg/object_struct.hpp"
   
-  #include "example/include/mmio_gpio.hpp"
+  #include "robot_steering_controller/mmio_gpio.hpp"
 
   #include <utility>
   #include <limits>
+  #include <gpiod.h>
 
   namespace robot_steering_controller
   {
@@ -175,15 +176,18 @@
     void halt();
     int object_detection(int label, double point3d_x, double point3d_y, double point3d_z);
 
-    //MmioGpio gpio();
+    //MmioGpio gpio;
+    //gpiod_chip *chip;
+    //gpiod_line *line;
     int halt_{0};
     double stop_distance_{0.0};
     double slow_distance_{0.0};
     double wheelbase_{0.0};    
     int object_tracking_{0};
-    int tracked_object_id_{0};
     int manual_override_{0}; // 0 = no manual override, 1 = manual override
     int car_movement{RUNNING};
+
+    std::vector<float> execute_time;
 
     ROBOT_STEERING_CONTROLLER__VISIBILITY_LOCAL void reference_callback(
       const std::shared_ptr<ImgAnalyzeMsg> msg);    

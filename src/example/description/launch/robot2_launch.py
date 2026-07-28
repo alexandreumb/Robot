@@ -90,8 +90,8 @@ def generate_launch_description():
         control_node_remapped, 
         robot_state_publisher_node, 
         robot_controller_spawner, 
-        delay_joint_state_broadcaster, 
-        delay_gps_sensor_broadcaster, 
+        #delay_joint_state_broadcaster, 
+        #delay_gps_sensor_broadcaster, 
         #delayed_rviz_after_joint_state_broadcaster, 
         ] 
     

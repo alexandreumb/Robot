@@ -22,6 +22,7 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   tf2_geometry_msgs
   control_msgs
   msgs
+  PkgConfig
 )
 
 find_package(ament_cmake REQUIRED)
@@ -29,6 +30,7 @@ find_package(backward_ros REQUIRED)
 foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
   find_package(${Dependency} REQUIRED)
 endforeach()
+pkg_check_modules(GPIOD REQUIRED libgpiod)
 
 generate_parameter_library(robot_steering_controller_parameters
   src/robot_steering_controller.yaml
@@ -43,9 +45,13 @@ add_library(
 target_compile_features(robot_steering_controller PUBLIC cxx_std_17)
 target_include_directories(robot_steering_controller PUBLIC
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
+  ${GPIOD_INCLUDE_DIRS}
+)
 target_link_libraries(robot_steering_controller PUBLIC
-  robot_steering_controller_parameters)
+  robot_steering_controller_parameters
+  ${GPIOD_LIBRARIES}
+)
 ament_target_dependencies(robot_steering_controller PUBLIC ${THIS_PACKAGE_INCLUDE_DEPENDS})
 
 # Causes the visibility macros to use dllexport rather than dllimport,

@@ -19,6 +19,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <gpiod.h>
 
 #include "controller_interface/controller_interface_base.hpp"
 #include "controller_manager_msgs/msg/hardware_component_state.hpp"
@@ -279,6 +280,22 @@ ControllerManager::ControllerManager(
     std::make_shared<pluginlib::ClassLoader<controller_interface::ChainableControllerInterface>>(
       kControllerInterfaceNamespace, kChainableControllerInterfaceClassName))
 {
+  /*
+  auto GPIO_LINE = 108;
+  chip = gpiod_chip_open("/dev/gpiochip0");   
+  if (!chip) {
+    throw std::runtime_error("Failed to open gpiochip0");
+  }
+  
+  line = gpiod_chip_get_line(chip, GPIO_LINE);
+  if (!line) {
+    throw std::runtime_error("Failed to get GPIO line");
+  }
+  
+  if (gpiod_line_request_output(line, "ros2_control", 0) < 0) {
+    throw std::runtime_error("Failed to request output");
+  }
+  */
   if (!get_parameter("update_rate", update_rate_))
   {
     RCLCPP_WARN(get_logger(), "'update_rate' parameter not set, using default value.");
@@ -315,6 +332,22 @@ ControllerManager::ControllerManager(
     std::make_shared<pluginlib::ClassLoader<controller_interface::ChainableControllerInterface>>(
       kControllerInterfaceNamespace, kChainableControllerInterfaceClassName))
 {
+  /*
+  auto GPIO_LINE = 108;
+  chip = gpiod_chip_open("/dev/gpiochip0");   
+  if (!chip) {
+    throw std::runtime_error("Failed to open gpiochip0");
+  }
+  
+  line = gpiod_chip_get_line(chip, GPIO_LINE);
+  if (!line) {
+    throw std::runtime_error("Failed to get GPIO line");
+  }
+  
+  if (gpiod_line_request_output(line, "ros2_control", 0) < 0) {
+    throw std::runtime_error("Failed to request output");
+  }
+  */
   if (!get_parameter("update_rate", update_rate_))
   {
     RCLCPP_WARN(get_logger(), "'update_rate' parameter not set, using default value.");
@@ -337,6 +370,8 @@ ControllerManager::~ControllerManager()
     rclcpp::Context::SharedPtr context = this->get_node_base_interface()->get_context();
     context->remove_pre_shutdown_callback(*(preshutdown_cb_handle_.get()));
     preshutdown_cb_handle_.reset();
+    //gpiod_line_release(line);
+    //gpiod_chip_close(chip);
   }
 }
 
@@ -2181,16 +2216,19 @@ void ControllerManager::read(const rclcpp::Time & time, const rclcpp::Duration &
 
 controller_interface::return_type ControllerManager::update(
   const rclcpp::Time & time, const rclcpp::Duration & period)
-{
+  {
+  //between 3-5 microseconds
   std::vector<ControllerSpec> & rt_controller_list =
-    rt_controllers_wrapper_.update_and_get_used_by_rt_list();
-
+  rt_controllers_wrapper_.update_and_get_used_by_rt_list();
+  
+  
   auto ret = controller_interface::return_type::OK;
   ++update_loop_counter_;
   update_loop_counter_ %= update_rate_;
-
+  
   for (auto loaded_controller : rt_controller_list)
   {
+
     // TODO(v-lopez) we could cache this information
     // https://github.com/ros-controls/ros2_control/issues/153
     if (is_controller_active(*loaded_controller.c))
@@ -2206,14 +2244,16 @@ controller_interface::return_type ControllerManager::update(
         get_logger(), "update_loop_counter: '%d ' controller_go: '%s ' controller_name: '%s '",
         update_loop_counter_, controller_go ? "True" : "False",
         loaded_controller.info.name.c_str());
-
+        
+        
       if (controller_go)
       {
+        //gpiod_line_set_value(line, 1);
         auto controller_ret = loaded_controller.c->update(
           time, (controller_update_factor != 1u)
                   ? rclcpp::Duration::from_seconds(1.0 / controller_update_rate)
                   : period);
-
+        //gpiod_line_set_value(line, 0);
         if (controller_ret != controller_interface::return_type::OK)
         {
           RCLCPP_ERROR(
@@ -2230,7 +2270,6 @@ controller_interface::return_type ControllerManager::update(
   {
     manage_switch();
   }
-
   return ret;
 }
 

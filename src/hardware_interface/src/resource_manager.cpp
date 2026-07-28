@@ -654,9 +654,30 @@ public:
   std::unordered_map<std::string, bool> claimed_command_interface_map_;
 };
 
-ResourceManager::ResourceManager() : resource_storage_(std::make_unique<ResourceStorage>()) {}
+ResourceManager::ResourceManager() : resource_storage_(std::make_unique<ResourceStorage>()) 
+{
+  /*
+  auto GPIO_LINE = 108;
+  chip = gpiod_chip_open("/dev/gpiochip0");   
+  if (!chip) {
+    throw std::runtime_error("Failed to open gpiochip0");
+  }
+  
+  line = gpiod_chip_get_line(chip, GPIO_LINE);
+  if (!line) {
+    throw std::runtime_error("Failed to get GPIO line");
+  }
+  
+  if (gpiod_line_request_output(line, "ros2_control", 0) < 0) {
+    throw std::runtime_error("Failed to request output");
+  }
+  */
+}
 
-ResourceManager::~ResourceManager() = default;
+ResourceManager::~ResourceManager() {
+  //gpiod_line_release(line);
+  //gpiod_chip_close(chip);
+}
 
 ResourceManager::ResourceManager(
   const std::string & urdf, bool validate_interfaces, bool activate_all)
@@ -1257,12 +1278,14 @@ HardwareReadWriteStatus ResourceManager::read(
   {
     for (auto & component : components)
     {
+      //gpiod_line_set_value(line, 1); 
       if (component.read(time, period) != return_type::OK)
       {
         read_write_status.ok = false;
         read_write_status.failed_hardware_names.push_back(component.get_name());
         resource_storage_->remove_all_hardware_interfaces_from_available_list(component.get_name());
       }
+      //gpiod_line_set_value(line, 0); 
     }
   };
 

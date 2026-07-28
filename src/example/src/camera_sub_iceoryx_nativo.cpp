@@ -306,7 +306,7 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
 #endif
             //RCLCPP_INFO(node->get_logger(), "Processing time: %.4f ms", process_duration / 1'000'000LL);
 
-            
+            /*
             if (objects.size() > 0)
             {   
                 test += 1;
@@ -330,9 +330,23 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
                     obj_msg.object[i].point3d.z = objects[i].Pose3D[2];
                 }
             }                 
+            */
             
                   
 #endif
+            obj_msg.object.resize(1);
+            obj_msg.object[0].label = 0;
+            obj_msg.object[0].probability = 0.9;
+            obj_msg.object[0].box.x = 100;
+            obj_msg.object[0].box.y = 0;
+            obj_msg.object[0].box.width = 400;
+            obj_msg.object[0].box.height = 200;
+            obj_msg.object[0].kps = {0.1,2.7,2.5,3.5};
+            obj_msg.object[0].point.pose_x = 15;
+            obj_msg.object[0].point.pose_y = 6;
+            obj_msg.object[0].point3d.x = 10;
+            obj_msg.object[0].point3d.y = 6;
+            obj_msg.object[0].point3d.z = 1.2;
             obj_msg.header.stamp.sec = current_frame.timestamp / 1'000'000'000LL;
             obj_msg.header.stamp.nanosec = current_frame.timestamp % 1'000'000'000LL;
             obj_msg.middle_header.stamp = node->now();

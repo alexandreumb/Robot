@@ -22,6 +22,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <gpiod.h>
 
 #include "controller_interface/chainable_controller_interface.hpp"
 #include "controller_interface/controller_interface.hpp"
@@ -515,6 +516,9 @@ private:
 
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr robot_description_subscription_;
 
+  gpiod_line *line;
+  gpiod_chip *chip;
+  bool print{true};
   struct SwitchParams
   {
     void reset()

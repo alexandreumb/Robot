@@ -7,6 +7,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <time.h>
 #include <mutex>    
+#include <sys/timerfd.h>
 
 #include "msgs/msg/teleop_command.hpp"
 
@@ -68,7 +69,44 @@ int main(int argc, char ** argv)
         "robot_steering_controller/reference_teleop", qos);
 
     std::thread pub_thread([&]() {
+        int times{0};
+        int executions{0};
+
+        int tfd = timerfd_create(CLOCK_MONOTONIC, 0);
+        if (tfd < 0) {
+            return 0;
+        }
+
+        auto const period_ns = 1'000'000'000LL / 1000;
+        timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+
+        uint64_t first_abs_ns =
+        (uint64_t)now.tv_sec * 1000000000ULL +
+        now.tv_nsec +
+        period_ns;
+
+        itimerspec ts{};
+        ts.it_value.tv_sec  = first_abs_ns / 1'000'000'000LL;
+        ts.it_value.tv_nsec = first_abs_ns % 1'000'000'000LL;
+        ts.it_interval.tv_sec  = period_ns / 1'000'000'000LL;
+        ts.it_interval.tv_nsec = period_ns % 1'000'000'000LL;
+        
+        uint64_t expirations;
+
+        if (timerfd_settime(tfd, TFD_TIMER_ABSTIME, &ts, nullptr) < 0) 
+        {
+            close(tfd);
+            return 0;
+        } 
+
         while (running) {
+
+            ssize_t n = read(tfd, &expirations, sizeof(expirations));
+            if (n < 0)
+                break;
+            else if (expirations > 1)
+                std::cout << "Expiration " << expirations << std::endl;
             msgs::msg::TeleopCommand msg;
             msg.header.frame_id = "base_link";
             int a;
@@ -87,8 +125,8 @@ int main(int argc, char ** argv)
             msg.angle = a;
             msg.manual = manual;
             publisher->publish(msg);
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+
     });
 
     enableRawMode();

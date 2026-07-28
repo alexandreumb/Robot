@@ -162,12 +162,12 @@ public:
   }
 
 private:
-  T * realtime_data_;
-  T * non_realtime_data_;
-  bool new_data_available_;
+  alignas(64) T * realtime_data_;
+  alignas(64) T * non_realtime_data_;
+  alignas(64) bool new_data_available_;
 
   // Set as mutable so that readFromNonRT() can be performed on a const buffer
-  mutable std::mutex mutex_;
+  alignas(64) mutable std::mutex mutex_;
 };  // class
 
 }  // namespace realtime_tools

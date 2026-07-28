@@ -3,7 +3,7 @@ controller_manager:
   ros__parameters:
     use_sim_time: false  # Set to true if using Gazebo/simulation
     cpu_affinity: 2
-    update_rate: 500
+    update_rate: 1000
     thread_priority: 85
 
     joint_state_broadcaster:

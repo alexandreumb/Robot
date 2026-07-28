@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <string>
 #include <thread>
+#include <gpiod.h>
 
 namespace example
 {
@@ -185,6 +186,9 @@ namespace example
         int write_front {0};
         int write_rear {0};
         int write_direction {0};
+
+        //gpiod_chip *chip;
+        //gpiod_line *line;
 };
 
 } // namespace example

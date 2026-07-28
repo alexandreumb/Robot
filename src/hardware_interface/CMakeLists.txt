@@ -14,12 +14,14 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   rcutils
   TinyXML2
   tinyxml2_vendor
+  PkgConfig
 )
 
 find_package(ament_cmake REQUIRED)
 foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
   find_package(${Dependency} REQUIRED)
 endforeach()
+pkg_check_modules(GPIOD REQUIRED libgpiod)
 
 add_library(hardware_interface SHARED
   src/actuator.cpp
@@ -33,11 +35,16 @@ target_compile_features(hardware_interface PUBLIC cxx_std_17)
 target_include_directories(hardware_interface PUBLIC
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include/hardware_interface>
+  ${GPIOD_INCLUDE_DIRS}
+
 )
 ament_target_dependencies(hardware_interface PUBLIC ${THIS_PACKAGE_INCLUDE_DEPENDS})
 # Causes the visibility macros to use dllexport rather than dllimport,
 # which is appropriate when building the dll but not consuming it.
 target_compile_definitions(hardware_interface PRIVATE "HARDWARE_INTERFACE_BUILDING_DLL")
+target_link_libraries(hardware_interface PUBLIC
+  ${GPIOD_LIBRARIES}
+)
 
 add_library(mock_components SHARED
   src/mock_components/generic_system.cpp
