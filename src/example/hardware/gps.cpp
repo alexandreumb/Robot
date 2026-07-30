@@ -21,7 +21,7 @@
 namespace example
 {
 
-#define GPS_ACTIVE 0
+#define GPS_ACTIVE 1
 #define WAYPOINT_MIN_DIST_SQ 0.25
 
 //////////////////////////////////////////////////////////////
@@ -292,27 +292,6 @@ hardware_interface::CallbackReturn GpsHardware::on_configure(
 hardware_interface::CallbackReturn GpsHardware::on_activate(
     const rclcpp_lifecycle::State &)
 {
-    /*
-    RCLCPP_INFO(get_logger(), "GpsHardware Activate");
-    auto GPIO_LINE = 108;
-    chip = gpiod_chip_open("/dev/gpiochip0");   
-    if (!chip) {
-        throw std::runtime_error("Failed to open gpiochip0");
-    }
-    RCLCPP_INFO(get_logger(), "GpsHardware Activate");
-
-    line = gpiod_chip_get_line(chip, GPIO_LINE);
-    if (!line) {
-        throw std::runtime_error("Failed to get GPIO line");
-    }
-    RCLCPP_INFO(get_logger(), "GpsHardware Activate");
-
-    if (gpiod_line_request_output(line, "example", 0) < 0) {
-        throw std::runtime_error("Failed to request output");
-    }
-    RCLCPP_INFO(get_logger(), "GpsHardware Activate");
-    */
-    
     if (read_)
     {
         // Load entire file into waypoints vector upfront
@@ -457,10 +436,9 @@ GpsHardware::export_state_interfaces()
 hardware_interface::return_type GpsHardware::read(
     const rclcpp::Time &, const rclcpp::Duration &)
 {
-    //gpiod_line_set_value(line, 1);
 
 #if GPS_ACTIVE
-        copy = *latest_data_.readFromRT();
+    copy = *latest_data_.readFromRT();
 
     if (read_)
     {
@@ -559,7 +537,6 @@ hardware_interface::return_type GpsHardware::read(
     }
     i++;
     
-    //gpiod_line_set_value(line, 0);
 
     return hardware_interface::return_type::OK;
 }

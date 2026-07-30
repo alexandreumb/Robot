@@ -55,12 +55,12 @@ static const std::string OUTPUT_DIR = std::string(getenv("HOME")) + "/latency_da
 // ── options ───────────────────────────────────────────────────────────────────
 #define USE_CLOCK_MONOTONIC  1
 #define USE_RT_SCHEDULING    0
-#define USE_CPU_AFFINITY     0
+#define USE_CPU_AFFINITY     1
 #define REALSENSE            1
 #define SAVE_CSV             1
 #define PUBLISH_METHOD       1 // 1 = publish with thread
 
-constexpr int      SUBSCRIBER_CORE = 4;
+constexpr int      SUBSCRIBER_CORE = 2;
 constexpr int      RT_PRIORITY     = 40;
 constexpr int      IMG_TYPE_COLOR    = CV_8UC3;         // bgr8, 3 bytes per pixel
 constexpr int      IMG_TYPE_DEPTH    = CV_16UC1;         

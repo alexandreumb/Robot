@@ -11,6 +11,12 @@
 
 #include "msgs/msg/teleop_command.hpp"
 
+#define USE_CPU_AFFINITY     1
+#define USE_RT_SCHEDULING    0
+
+constexpr int      SUBSCRIBER_CORE = 3;
+constexpr int      RT_PRIORITY     = 40;
+
 std::atomic<bool> running{true};
 double velocity{0};
 int angle{0};
@@ -53,6 +59,28 @@ inline int64_t monotonic_now_ns()
     return static_cast<int64_t>(ts.tv_sec) * 1'000'000'000LL + ts.tv_nsec;
 }
 */
+void configure_thread()
+{
+#if USE_RT_SCHEDULING
+    struct sched_param param{};
+    param.sched_priority = RT_PRIORITY;
+    if (pthread_setschedparam(pthread_self(), SCHED_FIFO, &param) != 0) {
+        std::cerr << "[WARN] Failed to set RT scheduling\n";
+    } else {
+        std::cout << "[INFO] RT scheduling set: SCHED_FIFO priority " << RT_PRIORITY << "\n";
+    }
+#endif
+#if USE_CPU_AFFINITY
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(SUBSCRIBER_CORE, &cpuset);
+    if (pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset) != 0) {
+        std::cerr << "[WARN] Failed to set CPU affinity\n";
+    } else {
+        std::cout << "[INFO] Thread pinned to core " << SUBSCRIBER_CORE << "\n";
+    }
+#endif
+}
 
 int main(int argc, char ** argv)
 {
@@ -62,6 +90,7 @@ int main(int argc, char ** argv)
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
 
+    configure_thread();
     auto node = rclcpp::Node::make_shared("teleop_publisher_node");
 
     auto qos = rclcpp::QoS(1).best_effort().durability_volatile();
@@ -77,7 +106,7 @@ int main(int argc, char ** argv)
             return 0;
         }
 
-        auto const period_ns = 1'000'000'000LL / 1000;
+        auto const period_ns = 1'000'000'000LL / 100;
         timespec now;
         clock_gettime(CLOCK_MONOTONIC, &now);
 
@@ -105,8 +134,6 @@ int main(int argc, char ** argv)
             ssize_t n = read(tfd, &expirations, sizeof(expirations));
             if (n < 0)
                 break;
-            else if (expirations > 1)
-                std::cout << "Expiration " << expirations << std::endl;
             msgs::msg::TeleopCommand msg;
             msg.header.frame_id = "base_link";
             int a;

@@ -19,7 +19,7 @@ using Image8Mb = msgs::msg::Image8Mb;
 #define USE_CLOCK_MONOTONIC 0
 #define REALSENSE           1
 #define USE_RT_SCHEDULING   0
-#define USE_CPU_AFFINITY    0
+#define USE_CPU_AFFINITY    1
 
 static constexpr char IOX_SERVICE[]  = "msgs/msg/Image8Mb";
 static constexpr char IOX_INSTANCE[] = "/camera";
@@ -41,7 +41,7 @@ inline int64_t monotonic_now_ns()
 // ── constants — must match camera and fixed_size_msgs layout ─────────────────
 constexpr int      CAM_INDEX   = 2;
 constexpr int      RT_PRIORITY = 40;     //needs to be inferior to the prority of the nvidia drivers which is 50
-constexpr int      SUBSCRIBER_CORE = 3;
+constexpr int      SUBSCRIBER_CORE = 2;
 constexpr int      IMG_WIDTH   = 1280;
 constexpr int      IMG_HEIGHT  = 720;
 constexpr int      WARMUP_CHUNKS = 8; // >= your mempool count for this chunk size
@@ -67,7 +67,7 @@ void configure_thread()
 #endif
 #if USE_CPU_AFFINITY
     cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
+    CPU_ZERO(&cpuset);  
     CPU_SET(SUBSCRIBER_CORE, &cpuset);
     if (pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset) != 0) {
         std::cerr << "[WARN] Failed to set CPU affinity\n";
@@ -222,7 +222,6 @@ int main(int argc, char ** argv)
 #else
                 msg->publish_timestamp = node->now().nanoseconds();
 #endif
-                RCLCPP_INFO(node->get_logger(), "Publishing image with timestamp: %f ms", static_cast<double>(msg->publish_timestamp - msg->timestamp)/ 1e6);
                 pub.publish(userPayload);
             })
             .or_else([](auto& error) {

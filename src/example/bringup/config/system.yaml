@@ -2,9 +2,9 @@
 controller_manager:
   ros__parameters:
     use_sim_time: false  # Set to true if using Gazebo/simulation
-    cpu_affinity: 2
+    cpu_affinity: 4
     update_rate: 1000
-    thread_priority: 85
+    thread_priority: 98
 
     joint_state_broadcaster:
       type: "joint_state_broadcaster/JointStateBroadcaster"

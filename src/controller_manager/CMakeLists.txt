@@ -15,7 +15,6 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
     realtime_tools
     std_msgs
     PkgConfig
-    example
 )
 
 find_package(ament_cmake REQUIRED)
@@ -35,6 +34,9 @@ target_include_directories(controller_manager PUBLIC
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include/controller_manager>
   ${GPIOD_INCLUDE_DIRS}
+)
+target_link_libraries(controller_manager PRIVATE
+  ${GPIOD_LIBRARIES}
 )
 ament_target_dependencies(controller_manager PUBLIC ${THIS_PACKAGE_INCLUDE_DEPENDS})
 

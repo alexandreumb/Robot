@@ -159,7 +159,7 @@ RobotSteeringController::RobotSteeringController()
       ref_subscriber_image_ = get_node()->create_subscription<ImgAnalyzeMsg>(
         "~/reference", subscribers_qos,
         std::bind(&RobotSteeringController::reference_callback, this, std::placeholders::_1));
-
+        
       ref_subscriber_teleopcommand_ = get_node()->create_subscription<TeleopCommand>(
         "~/reference_teleop", subscribers_qos,
         std::bind(&RobotSteeringController::reference_teleop, this, std::placeholders::_1));
@@ -639,7 +639,7 @@ RobotSteeringController::RobotSteeringController()
       }
       controller_state_publisher_->unlockAndPublish();
     }
-
+    
     reference_velocity_ = std::numeric_limits<double>::quiet_NaN();
     reference_angle_ = std::numeric_limits<double>::quiet_NaN();
     halt_ = RUNNING;
