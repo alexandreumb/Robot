@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <gpiod.h>
+#include <fstream>
 
 #include "controller_manager/controller_manager.hpp" 
 #include "controller_manager/mmio_gpio.hpp"
@@ -74,9 +75,10 @@ int main(int argc, char **argv) {
 
 std::thread cm_thread([cm, thread_priority, use_sim_time, target_ms, cpu_affinity]() 
 {      
+    size_t iteration = 0;  // Add this back for tracking
+    std::vector<std::chrono::duration<double>> diffs_;
     MmioGpio gpio;
     gpio.configure_pactl();
-    size_t iteration = 0;  // Add this back for tracking
     
     // Set CPU affinity FIRST (before RT scheduling)
     if (cpu_affinity >= 0) {
@@ -166,20 +168,45 @@ std::thread cm_thread([cm, thread_priority, use_sim_time, target_ms, cpu_affinit
         if (expirations > 1) {
             RCLCPP_WARN(cm->get_logger(), "Missed %llu deadline(s) at iteration %zu", expirations - 1, iteration);
         }
-        
-        rclcpp::Time ros_now = cm->now();
+
         rclcpp::Duration dt(std::chrono::nanoseconds(static_cast<int64_t>(measured_period * 1e6)));
-        
+    
         gpio.set(true);
-        cm->write(ros_now, dt); 
-        cm->read(ros_now, dt); 
+        cm->write(current_time, dt); 
+        cm->read(current_time, dt); 
         gpio.set(false);
-        cm->update(ros_now, dt); 
-        
+        cm->update(current_time, dt); 
+        auto after = std::chrono::steady_clock::now(); 
+
+        diffs_.push_back(after - current_time);
     }
     close(tfd);
     
+    RCLCPP_INFO(
+        cm->get_logger(),
+        "Control loop completed %f s",
+        ([&]() {
+            std::chrono::duration<double> sum = std::chrono::duration<double>::zero();
+            for (const auto& d : diffs_)
+                sum += d;
+            return sum.count()/iteration;
+        })()
+    );
     RCLCPP_INFO(cm->get_logger(), "Control loop completed %zu iterations", iteration);
+
+    std::ofstream file("diffs.csv");
+
+    if (!file.is_open()) {
+        RCLCPP_ERROR(cm->get_logger(), "Failed to open diffs.csv");
+    } else {
+        file << "sample,time_s\n";  // Header
+
+        for (size_t i = 0; i < diffs_.size(); ++i) {
+            file << i << "," << diffs_[i]. << "\n";
+        }
+
+    file.close();
+
 });
 
   executor->add_node(cm); 

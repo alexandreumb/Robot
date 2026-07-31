@@ -177,8 +177,6 @@
     int object_detection(int label, double point3d_x, double point3d_y, double point3d_z);
 
     //MmioGpio gpio;
-    //gpiod_chip *chip;
-    //gpiod_line *line;
     int halt_{0};
     double stop_distance_{0.0};
     double slow_distance_{0.0};

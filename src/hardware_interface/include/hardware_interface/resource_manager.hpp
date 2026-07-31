@@ -20,7 +20,6 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <gpiod.h>
 
 #include "hardware_interface/hardware_component_info.hpp"
 #include "hardware_interface/hardware_info.hpp"

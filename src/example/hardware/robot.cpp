@@ -236,23 +236,6 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_activate(
     const rclcpp_lifecycle::State &)
 {
     RCLCPP_INFO(get_logger(), "Activating Robot4FarmersHardware");
-    /*
-    auto GPIO_LINE = 108;
-    chip = gpiod_chip_open("/dev/gpiochip0");   
-    if (!chip) {
-        throw std::runtime_error("Failed to open gpiochip0");
-    }
-    
-    line = gpiod_chip_get_line(chip, GPIO_LINE);
-    if (!line) {
-        throw std::runtime_error("Failed to get GPIO line");
-    }
-    
-    if (gpiod_line_request_output(line, "ros2_control", 0) < 0) {
-        throw std::runtime_error("Failed to request output");
-    }
-    */
-    
 #if CAN_AVAILABLE
     openCan();
     if (can_socket_fd_ < 0) {
@@ -323,8 +306,6 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_deactivate(
     const rclcpp_lifecycle::State &)
 {
     RCLCPP_INFO(get_logger(), "Deactivating Robot4FarmersHardware");
-    //gpiod_line_release(line);
-    //gpiod_chip_close(chip);
 #if CAN_AVAILABLE
     can_running_ = false;
     if (can_thread_.joinable())
@@ -405,7 +386,6 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_shutdown(
 hardware_interface::return_type Robot4FarmersHardware::read(
     const rclcpp::Time &, const rclcpp::Duration &period)
 {
-    //gpiod_line_set_value(line, 1);
 #if CAN_AVAILABLE
     auto data = *latest_can_data_.readFromRT();
     for (auto &joint : joints_)
@@ -444,8 +424,6 @@ hardware_interface::return_type Robot4FarmersHardware::read(
         }
     }
 #endif
-    //gpiod_line_set_value(line, 1);
-
     return hardware_interface::return_type::OK;
 }
 

@@ -417,22 +417,6 @@ RobotSteeringController::RobotSteeringController()
     const rclcpp_lifecycle::State & /*previous_state*/)
   {
     //gpio.configure_pactl();
-    /*
-    auto GPIO_LINE = 108;
-    chip = gpiod_chip_open("/dev/gpiochip0");   
-    if (!chip) {
-      throw std::runtime_error("Failed to open gpiochip0");
-    }
-    
-    line = gpiod_chip_get_line(chip, GPIO_LINE);
-    if (!line) {
-      throw std::runtime_error("Failed to get GPIO line");
-    }
-    
-    if (gpiod_line_request_output(line, "ros2_control", 0) < 0) {
-      throw std::runtime_error("Failed to request output");
-    }
-    */
     utility::reset_controller_reference_image_msg(*(input_ref_img_.readFromRT()), get_node());
     utility::reset_controller_reference_teleopcommand_msg(*((input_ref_teleop_.readFromRT())), get_node());
     reference_velocity_ = 0.0;
@@ -451,8 +435,6 @@ RobotSteeringController::RobotSteeringController()
     last_angle_ = std::numeric_limits<double>::quiet_NaN();
     reference_velocity_ = std::numeric_limits<double>::quiet_NaN();
     reference_angle_ = std::numeric_limits<double>::quiet_NaN();
-    //gpiod_line_release(line);
-    //gpiod_chip_close(chip);
     std::ofstream myfile("/home/robotics4farmers/Dev/time.csv");
     int vsize = execute_time.size();
     for (int n=0; n<vsize; n++)
@@ -465,12 +447,10 @@ RobotSteeringController::RobotSteeringController()
   controller_interface::return_type RobotSteeringController::update(
     const rclcpp::Time & time, const rclcpp::Duration & period)
   {
-    //gpiod_line_set_value(line, 1);  
     //gpio.set(true);
     auto current_data = *(input_ref_teleop_.readFromRT());
     //3-6 microseconds with camera
     auto current_objects = *(input_ref_img_.readFromRT());
-    //gpiod_line_set_value(line, 0);  
 
     //const auto t = time - (*(input_ref_img_.readFromRT()))->middle_header.stamp;
     //RCLCPP_INFO(get_node()->get_logger(), "Update middle: %f seconds", t.seconds());

@@ -280,22 +280,6 @@ ControllerManager::ControllerManager(
     std::make_shared<pluginlib::ClassLoader<controller_interface::ChainableControllerInterface>>(
       kControllerInterfaceNamespace, kChainableControllerInterfaceClassName))
 {
-  /*
-  auto GPIO_LINE = 108;
-  chip = gpiod_chip_open("/dev/gpiochip0");   
-  if (!chip) {
-    throw std::runtime_error("Failed to open gpiochip0");
-  }
-  
-  line = gpiod_chip_get_line(chip, GPIO_LINE);
-  if (!line) {
-    throw std::runtime_error("Failed to get GPIO line");
-  }
-  
-  if (gpiod_line_request_output(line, "ros2_control", 0) < 0) {
-    throw std::runtime_error("Failed to request output");
-  }
-  */
   if (!get_parameter("update_rate", update_rate_))
   {
     RCLCPP_WARN(get_logger(), "'update_rate' parameter not set, using default value.");
@@ -332,22 +316,6 @@ ControllerManager::ControllerManager(
     std::make_shared<pluginlib::ClassLoader<controller_interface::ChainableControllerInterface>>(
       kControllerInterfaceNamespace, kChainableControllerInterfaceClassName))
 {
-  /*
-  auto GPIO_LINE = 108;
-  chip = gpiod_chip_open("/dev/gpiochip0");   
-  if (!chip) {
-    throw std::runtime_error("Failed to open gpiochip0");
-  }
-  
-  line = gpiod_chip_get_line(chip, GPIO_LINE);
-  if (!line) {
-    throw std::runtime_error("Failed to get GPIO line");
-  }
-  
-  if (gpiod_line_request_output(line, "ros2_control", 0) < 0) {
-    throw std::runtime_error("Failed to request output");
-  }
-  */
   if (!get_parameter("update_rate", update_rate_))
   {
     RCLCPP_WARN(get_logger(), "'update_rate' parameter not set, using default value.");
@@ -370,8 +338,6 @@ ControllerManager::~ControllerManager()
     rclcpp::Context::SharedPtr context = this->get_node_base_interface()->get_context();
     context->remove_pre_shutdown_callback(*(preshutdown_cb_handle_.get()));
     preshutdown_cb_handle_.reset();
-    //gpiod_line_release(line);
-    //gpiod_chip_close(chip);
   }
 }
 
@@ -2248,12 +2214,10 @@ controller_interface::return_type ControllerManager::update(
         
       if (controller_go)
       {
-        //gpiod_line_set_value(line, 1);
         auto controller_ret = loaded_controller.c->update(
           time, (controller_update_factor != 1u)
                   ? rclcpp::Duration::from_seconds(1.0 / controller_update_rate)
                   : period);
-        //gpiod_line_set_value(line, 0);
         if (controller_ret != controller_interface::return_type::OK)
         {
           RCLCPP_ERROR(

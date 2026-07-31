@@ -24,7 +24,6 @@ find_package(backward_ros REQUIRED)
 foreach(Dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
   find_package(${Dependency} REQUIRED)
 endforeach()
-pkg_check_modules(GPIOD REQUIRED libgpiod)
 
 add_library(controller_manager SHARED
   src/controller_manager.cpp
@@ -33,10 +32,6 @@ target_compile_features(controller_manager PUBLIC cxx_std_17)
 target_include_directories(controller_manager PUBLIC
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include/controller_manager>
-  ${GPIOD_INCLUDE_DIRS}
-)
-target_link_libraries(controller_manager PRIVATE
-  ${GPIOD_LIBRARIES}
 )
 ament_target_dependencies(controller_manager PUBLIC ${THIS_PACKAGE_INCLUDE_DEPENDS})
 
@@ -47,7 +42,6 @@ target_compile_definitions(controller_manager PRIVATE "CONTROLLER_MANAGER_BUILDI
 add_executable(ros2_control_node src/ros2_control_node.cpp)
 target_link_libraries(ros2_control_node PRIVATE
   controller_manager
-  ${GPIOD_LIBRARIES}
 )
 
 if(BUILD_TESTING)

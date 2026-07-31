@@ -19,7 +19,6 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
-#include <gpiod.h>
 
 namespace example
 {
@@ -169,8 +168,6 @@ namespace example
         int read_{0};
 
         GPSData copy{};
-        //gpiod_chip *chip;
-        //gpiod_line *line;
     };
 
 } // namespace example
