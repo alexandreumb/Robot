@@ -13,7 +13,7 @@
 #include "iceoryx_posh/popo/wait_set.hpp"
 #include "iceoryx_posh/runtime/posh_runtime.hpp"
 
-#define GPU 1
+#define GPU 0
 #if GPU
     #include "Yolo_Tensorrt/yolov8.h"
 #endif
@@ -54,11 +54,9 @@ static const std::string OUTPUT_DIR = std::string(getenv("HOME")) + "/latency_da
 
 // ── options ───────────────────────────────────────────────────────────────────
 #define USE_CLOCK_MONOTONIC  1
-#define USE_RT_SCHEDULING    0
+#define USE_RT_SCHEDULING    1
 #define USE_CPU_AFFINITY     1
-#define REALSENSE            1
 #define SAVE_CSV             1
-#define PUBLISH_METHOD       1 // 1 = publish with thread
 
 constexpr int      SUBSCRIBER_CORE = 2;
 constexpr int      RT_PRIORITY     = 40;
@@ -87,18 +85,25 @@ struct TimesToAnalyze
 std::atomic<bool> stop{false};
 std::mutex write_mutex;
 std::optional<Frame> latest_frame;
-std::optional<TimesToAnalyze> latest_times;
+//std::optional<TimesToAnalyze> latest_times;
+TimesToAnalyze latest_times;
 std::condition_variable frame_cv;
 
 static double   total_full_ms{0.0};
 static double   total_transport_ms{0.0};
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-void signal_handler(int sig IOX_MAYBE_UNUSED) { 
-    stop = true; 
+void signal_handler(int)
+{
+    std::cerr << "\n[SIGNAL] SIGINT received\n";
+    stop.store(true, std::memory_order_relaxed);
 
     if (waitset)
+    {
         waitset->markForDestruction();
+    }
+
+    frame_cv.notify_all();
 }
 
 inline int64_t monotonic_now_ns()
@@ -115,7 +120,7 @@ std::string make_csv_path(std::string engine_file_path)
         model = "yolo_rt";
     }
     else {
-        model = "yolo8";
+        model = "native_iceoryx";
     }
     
     system(("mkdir -p " + OUTPUT_DIR + model).c_str());
@@ -204,7 +209,7 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
 #if defined(__aarch64__) || defined(_M_ARM64)
     const std::string engine_file_path = "/home/robotics4farmers/Dev/Robot/src/example/Yolo_Tensorrt/r4f_yolo11l_seg.onnx";
 #elif defined(__x86_64__) || defined(_M_X64)
-    const std::string engine_file_path = "/home/robotics4farmers/Dev/Robot/src/example/Yolo_Tensorrt/r4f_yolo11l_seg.onnx";
+    const std::string engine_file_path = "/home/alexandre/latency_data/native_iceoryx";
 #endif
 
 #if GPU 
@@ -220,7 +225,7 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
     auto pub = node->create_publisher<msgs::msg::ImgAnalyzeMsg>(
         "robot_steering_controller/reference", qos);
 
-    configure_thread();    
+    configure_thread();
     // ── native iceoryx runtime init ───────────────────────────────────────────
     // Must be called once per process. The runtime name must be unique.
     // This connects directly to RouDi shared memory — same RouDi that
@@ -247,10 +252,9 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
 #if SAVE_CSV
     std::vector<TimesToAnalyze> times;
     std::vector<int> object_identified;
-    times.reserve(10000);
+    times.reserve(100000);
     object_identified.reserve(10000);
     int test{0};
-
 #endif 
 
     double   min_transport_ms   = std::numeric_limits<double>::max();
@@ -261,7 +265,7 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
     mlockall(MCL_CURRENT | MCL_FUTURE);
 
 // Processing thread
-#if PUBLISH_METHOD
+/*
     std::thread process_image_and_pub([&] ()
     {
         int policy;
@@ -270,8 +274,8 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
         pthread_getschedparam(pthread_self(), &policy, &param);
 
         std::cout << "policy = " << policy
-                << ", priority = " << param.sched_priority
-                << '\n';
+        << ", priority = " << param.sched_priority
+        << '\n';
         while (!stop)
         {
             Frame current_frame;
@@ -279,10 +283,10 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
             {
                 std::unique_lock<std::mutex> lock(write_mutex);
                 frame_cv.wait(lock, [&]{ return latest_frame.has_value() || stop;});
-
+                
                 if (stop)
-                    break;
-
+                break;
+                
                 current_frame = std::move(*latest_frame);
                 current_times = std::move(*latest_times);
                 latest_frame.reset();
@@ -292,21 +296,16 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
             auto transfer_duration = node->now().nanoseconds() - current_frame.transfer_time;
             ImgAnalyze obj_msg;
             obj_msg.has_object = 0;
-#if GPU 
+            #if GPU 
             auto before = node->now().nanoseconds();
             std::vector<Object> objects = process_image(detector, current_frame.color, current_frame.depth, current_frame.intrinsics);
             auto after = node->now().nanoseconds();
             auto process_duration = after - before;
-
-#if SAVE_CSV
-            current_times.transfer_thread_ms = (static_cast<double>(transfer_duration) / 1'000'000LL); // Convert to seconds
-            current_times.process_time_ms = (static_cast<double>(process_duration) / 1'000'000LL); // Convert to milliseconds
-            times.push_back(current_times);
             object_identified.push_back(objects.size());
-#endif
+            
             //RCLCPP_INFO(node->get_logger(), "Processing time: %.4f ms", process_duration / 1'000'000LL);
-
-            /*
+            
+            
             if (objects.size() > 0)
             {   
                 test += 1;
@@ -330,14 +329,24 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
                     obj_msg.object[i].point3d.z = objects[i].Pose3D[2];
                 }
             }                 
-            */
-            
-                  
-#endif
-            obj_msg.object.resize(1);
-            obj_msg.object[0].label = 0;
-            obj_msg.object[0].probability = 0.9;
-            obj_msg.object[0].box.x = 100;
+                            
+           #endif
+           
+           #if SAVE_CSV
+           current_times.transfer_thread_ms = (static_cast<double>(transfer_duration) / 1'000'000LL); // Convert to seconds
+           #if GPU
+           current_times.process_time_ms = (static_cast<double>(process_duration) / 1'000'000LL); // Convert to milliseconds
+           times.push_back(current_times);
+           #else
+           current_times.process_time_ms = 0.0; // Convert to milliseconds
+           times.push_back(current_times);
+           #endif
+           #endif
+           
+           obj_msg.object.resize(1);
+           obj_msg.object[0].label = 0;
+           obj_msg.object[0].probability = 0.9;
+           obj_msg.object[0].box.x = 100;
             obj_msg.object[0].box.y = 0;
             obj_msg.object[0].box.width = 400;
             obj_msg.object[0].box.height = 200;
@@ -351,12 +360,12 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
             obj_msg.header.stamp.nanosec = current_frame.timestamp % 1'000'000'000LL;
             obj_msg.middle_header.stamp = node->now();
             //RCLCPP_INFO(node->get_logger(), "Publishing image time: %llu.", (node->now().nanoseconds() - obj_msg.header.stamp.sec * 1'000'000'000LL - obj_msg.header.stamp.nanosec)%1'000'000'000LL);
-
+            
             pub->publish(obj_msg);
         }
     });
-#endif
-
+*/    
+    
     waitset->attachState(iox_sub, iox::popo::SubscriberState::HAS_DATA).or_else([](auto) {
         std::cerr << "failed to attach subscriber" << std::endl;
         std::exit(EXIT_FAILURE);
@@ -368,7 +377,13 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
     {
         auto notifications = waitset->wait();
 
+        if (stop)
+            break;
+
         for (auto& notification: notifications) {
+            if (stop)
+                break;
+            
             if (notification->doesOriginateFrom(&iox_sub)) {
                 iox_sub.take()
                 .and_then([&](const void * userPayload) {
@@ -419,7 +434,16 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
                     img_intrinsics.ppy = msg->image_intrinsics.ppy;
                     img_intrinsics.depth_units = msg->image_intrinsics.depth_units;
 
-#if PUBLISH_METHOD
+                    latest_times = TimesToAnalyze{
+                        full_ms,
+                        transport_ms,
+                        0,
+                        0
+                    };
+                    times.push_back(latest_times);
+                    object_identified.push_back(0);
+
+                    /*
                     {
                         std::lock_guard<std::mutex> lock(write_mutex);
                         latest_times = TimesToAnalyze{
@@ -428,7 +452,7 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
                             0,
                             0
                         };
-
+                        
                         latest_frame = Frame{
                             img_color.clone(),
                             img_depth.clone(),
@@ -438,48 +462,9 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
                         };
                     }
                     frame_cv.notify_one();
-#else          
-                    ImgAnalyze obj_msg;
-                    obj_msg.has_object = 0;
-#if GPU 
-                    std::vector<Object> objects = process_image(detector, img_color, img_depth, img_intrinsics);
+                    */
+                    
 
-                    if (objects.size() > 0)
-                    {
-                        test += 1;
-                        RCLCPP_INFO(node->get_logger(), "Frame %d.", test);
-                        //RCLCPP_INFO(node->get_logger(), "%lu objects detected in the current frame.", objects.size());
-                        obj_msg.has_object = 1;
-                        obj_msg.object.resize(objects.size());
-                        for (size_t i = 0; i < objects.size() && i < obj_msg.object.size(); ++i)
-                        {
-                            obj_msg.object[i].label = objects[i].label;
-                            obj_msg.object[i].probability = objects[i].probability;
-                            obj_msg.object[i].box.x = objects[i].rect.x;
-                            obj_msg.object[i].box.y = objects[i].rect.y;
-                            obj_msg.object[i].box.width = objects[i].rect.width;
-                            obj_msg.object[i].box.height = objects[i].rect.height;
-                            obj_msg.object[i].kps = objects[i].kps;
-                            obj_msg.object[i].point.pose_x = objects[i].Pose2D.x;
-                            obj_msg.object[i].point.pose_y = objects[i].Pose2D.y;
-                            obj_msg.object[i].point3d.x = objects[i].Pose3D[0];
-                            obj_msg.object[i].point3d.y = objects[i].Pose3D[1];
-                            obj_msg.object[i].point3d.z = objects[i].Pose3D[2];
-                        }
-                    }                 
-                        
-#endif
-                    obj_msg.header.stamp.sec = msg->timestamp / 1'000'000'000LL;
-                    obj_msg.header.stamp.nanosec = msg->timestamp % 1'000'000'000LL;
-                    obj_msg.middle_header.stamp = node->now();
-                    RCLCPP_INFO(node->get_logger(), "Publishing image time: %f ms.", static_cast<double>(node->now().nanoseconds() - msg->timestamp)/1'000'000LL);
-
-                    auto after = node->now();
-                    auto process_duration = after.nanoseconds() - receive_ns;
-                    process_time.push_back(static_cast<double>(process_duration) / 1'000'000'000.0); // Convert to seconds
-
-                    pub->publish(obj_msg);
-#endif
                     // ── Step 6: release chun  k back to iceoryx pool ────────────────────
                     // Must be called — otherwise the pool exhausts and publisher stalls.
                     iox_sub.release(userPayload);
@@ -510,10 +495,10 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
         RCLCPP_INFO(node->get_logger(), "──────────────────────────────────────────");
         RCLCPP_INFO(node->get_logger(), "Transport time summary");
         RCLCPP_INFO(node->get_logger(), "  Frames received      : %lu",   frame_count);
-        RCLCPP_INFO(node->get_logger(), "  Full latency   A→D   : %.1f ms (%.3f us)" , avg_full,      avg_full * 1e3);
-        RCLCPP_INFO(node->get_logger(), "  Transport only B→D   : %.1f ms (%.3f us)", avg_transport, avg_transport * 1e3);
-        RCLCPP_INFO(node->get_logger(), "  Transport min B→D    : %.1f ms", min_transport_ms);
-        RCLCPP_INFO(node->get_logger(), "  Transport max B→D    : %.1f ms", max_transport_ms);
+        RCLCPP_INFO(node->get_logger(), "  Full latency   A→D   : %.3f ms (%.3f us)" , avg_full,      avg_full * 1e3);
+        RCLCPP_INFO(node->get_logger(), "  Transport only B→D   : %.3f ms (%.3f us)", avg_transport, avg_transport * 1e3);
+        RCLCPP_INFO(node->get_logger(), "  Transport min B→D    : %.3f ms", min_transport_ms);
+        RCLCPP_INFO(node->get_logger(), "  Transport max B→D    : %.3f ms", max_transport_ms);
         RCLCPP_INFO(node->get_logger(), "  CSV saved to         : %s",     csv_path.c_str());
         RCLCPP_INFO(node->get_logger(), " Average processing time: %ld ms", std::accumulate(times.begin(), times.end(), int64_t{0}, [](int64_t total, const TimesToAnalyze& tm){return total + tm.process_time_ms;}) / times.size());
         RCLCPP_INFO(node->get_logger(), " Average transfer time: %ld ms", std::accumulate(times.begin(), times.end(), int64_t{0}, [](int64_t total, const TimesToAnalyze& tm){return total + tm.transfer_thread_ms;}) / times.size());
@@ -523,12 +508,12 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
     }
     
     RCLCPP_INFO(node->get_logger(), "Shutting down native iceoryx subscriber");
-    stop = true;
+    stop.store(true);
+    waitset->markForDestruction();
 
-#if PUBLISH_METHOD
-    frame_cv.notify_all();
-    process_image_and_pub.join();
-#endif
+    //frame_cv.notify_all();
+    //if (process_image_and_pub.joinable())
+    //   process_image_and_pub.join();
     rclcpp::shutdown();
     return 0;
 }

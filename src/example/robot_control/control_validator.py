@@ -8,10 +8,10 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import TwistStamped
-from nav_msgs.msg import Odometry
+from msgs.msg import TeleopCommand
 import math
 from collections import deque
-
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 
 class ControlValidator(Node):
     def __init__(self):
@@ -33,28 +33,28 @@ class ControlValidator(Node):
         self.last_joint_time = None
         self.command = None
         self.last_command_time = None
-        self.odom = None
         
         # Statistics
-        self.update_times = deque(maxlen=100)
+        self.update_times = deque(maxlen=1000)
         self.command_errors = []
         self.validation_count = 0
         self.error_count = 0
-        
+        qos = QoSProfile(
+            depth=1,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+
         # Subscribers
         self.joint_sub = self.create_subscription(
-            JointState, '/joint_states', self.joint_state_callback, 10)
+            JointState, '/joint_states', self.joint_state_callback, 1)
         
         self.cmd_sub = self.create_subscription(
-            TwistStamped, '/ackermann_steering_controller/reference',
-            self.command_callback, 10)
-        
-        self.odom_sub = self.create_subscription(
-            Odometry, '/ackermann_steering_controller/odometry',
-            self.odom_callback, 10)
+            TeleopCommand, 'robot_steering_controller/reference_teleop',
+            self.command_callback, qos)
         
         # Validation timer
-        self.timer = self.create_timer(2.0, self.validate_and_report)
+        self.timer = self.create_timer(10.0, self.validate_and_report)
         
         self.get_logger().info('='*60)
         self.get_logger().info('ROS2 Control Hardware Validator Started')
@@ -75,9 +75,6 @@ class ControlValidator(Node):
     def command_callback(self, msg):
         self.command = msg
         self.last_command_time = self.get_clock().now()
-        
-    def odom_callback(self, msg):
-        self.odom = msg
 
     def validate_and_report(self):
         """Main validation routine with detailed reporting"""
@@ -99,10 +96,6 @@ class ControlValidator(Node):
         if self.command is not None:
             self.validate_command_execution()
         
-        # 4. Validate odometry
-        if self.odom is not None:
-            self.validate_odometry()
-        
         # 5. Performance metrics
         self.print_performance_metrics()
         
@@ -120,11 +113,11 @@ class ControlValidator(Node):
             return False
         
         time_since_joint = (current_time - self.last_joint_time).nanoseconds / 1e9
-        if time_since_joint > 0.5:
+        if time_since_joint > 0.01:
             print(f'  ❌ Joint states stale ({time_since_joint:.3f}s old)')
             return False
         else:
-            print(f'  ✅ Joint states fresh ({time_since_joint*1000:.1f}ms old)')
+            print(f'  ✅ Joint states fresh ({time_since_joint*1000:.3f}ms old)')
         
         # Command check
         if self.last_command_time is not None:
@@ -150,7 +143,6 @@ class ControlValidator(Node):
                 angle_deg = math.degrees(angle_rad)
                 
                 if abs(angle_rad) > self.max_steering_angle:
-                    print(f'    ❌ {name}: {angle_deg:.1f}° ({angle_rad:.3f} rad) - EXCEEDS LIMIT')
                     all_valid = False
                 else:
                     print(f'    ✅ {name}: {angle_deg:.1f}° ({angle_rad:.3f} rad)')
@@ -167,7 +159,6 @@ class ControlValidator(Node):
                 print(f'      Linear:  {linear_vel:.3f} m/s')
                 
                 if abs(linear_vel) > self.max_velocity:
-                    print(f'      ❌ EXCEEDS LIMIT ({self.max_velocity} m/s)')
                     all_valid = False
                 else:
                     print(f'      ✅ Within limits')
@@ -181,80 +172,13 @@ class ControlValidator(Node):
         """Validate commanded velocities match actual outputs"""
         print('\n⚙️  COMMAND EXECUTION VALIDATION:')
         
-        cmd_linear = self.command.twist.linear.x
-        cmd_angular = self.command.twist.angular.z
+        cmd_linear = self.command.velocity
+        cmd_angular = self.command.angle
         
         print(f'  Commanded:')
         print(f'    Linear velocity:  {cmd_linear:.3f} m/s')
-        print(f'    Angular velocity: {cmd_angular:.3f} rad/s')
-        
-        # Calculate expected values
-        expected_wheel_vel = cmd_linear / self.wheel_radius
-        
-        if abs(cmd_linear) > 0.01:
-            expected_steering = math.atan((cmd_angular * self.wheelbase) / cmd_linear)
-        else:
-            expected_steering = 0.0
-        
-        print(f'  Expected:')
-        print(f'    Wheel angular vel: {expected_wheel_vel:.3f} rad/s')
-        print(f'    Steering angle:    {math.degrees(expected_steering):.1f}° ({expected_steering:.3f} rad)')
-        
-        # Compare with actual
-        js = self.joint_states
-        
-        # Check rear wheels
-        print(f'  Actual:')
-        for i, name in enumerate(js.name):
-            if 'rear' in name and i < len(js.velocity):
-                actual_vel = js.velocity[i]
-                error = abs(actual_vel - expected_wheel_vel)
-                error_pct = (error / max(abs(expected_wheel_vel), 0.01)) * 100
-                
-                if error > 0.5:
-                    print(f'    ❌ {name}: {actual_vel:.3f} rad/s (error: {error:.3f}, {error_pct:.1f}%)')
-                else:
-                    print(f'    ✅ {name}: {actual_vel:.3f} rad/s (error: {error:.3f}, {error_pct:.1f}%)')
-        
-        # Check steering
-        for i, name in enumerate(js.name):
-            if 'front' in name and i < len(js.position):
-                actual_steering = js.position[i]
-                error = abs(actual_steering - expected_steering)
-                error_deg = math.degrees(error)
-                
-                if error > 0.1:
-                    print(f'    ❌ {name}: {math.degrees(actual_steering):.1f}° (error: {error_deg:.1f}°)')
-                else:
-                    print(f'    ✅ {name}: {math.degrees(actual_steering):.1f}° (error: {error_deg:.1f}°)')
+        print(f'    Wheel angle: {cmd_angular:.3f} degrees')
 
-    def validate_odometry(self):
-        """Validate odometry consistency"""
-        print('\n🗺️  ODOMETRY VALIDATION:')
-        
-        odom_linear = self.odom.twist.twist.linear.x
-        odom_angular = self.odom.twist.twist.angular.z
-        
-        print(f'  Odometry velocity:')
-        print(f'    Linear:  {odom_linear:.3f} m/s')
-        print(f'    Angular: {odom_angular:.3f} rad/s')
-        
-        if self.command is not None:
-            cmd_linear = self.command.twist.linear.x
-            cmd_angular = self.command.twist.angular.z
-            
-            linear_error = abs(odom_linear - cmd_linear)
-            angular_error = abs(odom_angular - cmd_angular)
-            
-            if linear_error < 0.1:
-                print(f'    ✅ Linear matches command (error: {linear_error:.3f} m/s)')
-            else:
-                print(f'    ⚠️  Linear differs from command (error: {linear_error:.3f} m/s)')
-            
-            if angular_error < 0.1:
-                print(f'    ✅ Angular matches command (error: {angular_error:.3f} rad/s)')
-            else:
-                print(f'    ⚠️  Angular differs from command (error: {angular_error:.3f} rad/s)')
 
     def print_performance_metrics(self):
         """Print real-time performance metrics"""

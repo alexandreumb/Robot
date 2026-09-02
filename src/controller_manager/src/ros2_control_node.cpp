@@ -18,13 +18,14 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <gpiod.h>
+//#include <gpiod.h>
 #include <fstream>
 
 #include "controller_manager/controller_manager.hpp" 
 #include "controller_manager/mmio_gpio.hpp"
 #include "rclcpp/rclcpp.hpp" 
 #include "realtime_tools/realtime_helpers.hpp" 
+#include "controller_manager/memory.hpp"
 
 using namespace std::chrono_literals; 
 namespace { 
@@ -36,6 +37,14 @@ namespace {
     stop_loop = true; 
   } 
 } // namespace 
+
+struct CounterSample
+{
+    long long cycles;
+    long long instructions;
+    long long misses;
+    double execution_us;
+};
 
 int main(int argc, char **argv) { 
   rclcpp::init(argc, argv); // Register Ctrl+C handler 
@@ -75,10 +84,13 @@ int main(int argc, char **argv) {
 
 std::thread cm_thread([cm, thread_priority, use_sim_time, target_ms, cpu_affinity]() 
 {      
-    size_t iteration = 0;  // Add this back for tracking
-    std::vector<std::chrono::duration<double>> diffs_;
-    MmioGpio gpio;
-    gpio.configure_pactl();
+    int iteration = 0;  // Add this back for tracking
+    std::vector<CounterSample> samples;
+    std::vector<double> diffs_;
+
+    PerformanceCounters counters;
+    //MmioGpio gpio;
+    //gpio.configure_pactl();
     
     // Set CPU affinity FIRST (before RT scheduling)
     if (cpu_affinity >= 0) {
@@ -153,47 +165,80 @@ std::thread cm_thread([cm, thread_priority, use_sim_time, target_ms, cpu_affinit
         return;
     } 
     auto previous_time = std::chrono::steady_clock::now(); 
-    while (rclcpp::ok() && !stop_loop) 
+
+    while (rclcpp::ok() && !stop_loop)
     {
         ssize_t n = read(tfd, &expirations, sizeof(expirations));
-        if (n < 0) break;
-        
-        auto current_time = std::chrono::steady_clock::now(); 
-        auto measured_period = std::chrono::duration<double, std::milli>(current_time - previous_time).count(); 
+        if (n < 0)
+            break;
+
+        auto current_time = std::chrono::steady_clock::now();
+
+        auto measured_period =
+            std::chrono::duration<double, std::milli>(
+                current_time - previous_time).count();
+
         previous_time = current_time;
-        
-        iteration++;  // Increment iteration counter
-        
-        // Check for missed deadlines
+
+        iteration++;
+
         if (expirations > 1) {
-            RCLCPP_WARN(cm->get_logger(), "Missed %llu deadline(s) at iteration %zu", expirations - 1, iteration);
+            RCLCPP_WARN(
+                cm->get_logger(),
+                "Missed %llu deadline(s) at iteration %zu",
+                expirations - 1,
+                iteration);
         }
 
-        rclcpp::Duration dt(std::chrono::nanoseconds(static_cast<int64_t>(measured_period * 1e6)));
-    
-        gpio.set(true);
-        cm->write(current_time, dt); 
-        cm->read(current_time, dt); 
-        gpio.set(false);
-        cm->update(current_time, dt); 
-        auto after = std::chrono::steady_clock::now(); 
+        // Duration calculated from steady_clock
+        rclcpp::Duration dt(
+            std::chrono::nanoseconds(
+                static_cast<int64_t>(measured_period * 1e6)));
 
-        diffs_.push_back(after - current_time);
+        auto current_ns =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(
+                current_time.time_since_epoch()
+            ).count();
+
+        // ROS time comes from the ROS clock
+        rclcpp::Time ros_time(current_ns, RCL_STEADY_TIME);
+        
+        counters.start();
+        cm->read(ros_time, dt);
+        cm->update(ros_time, dt);
+        cm->write(ros_time, dt);
+        counters.stop();
+
+        auto after = std::chrono::steady_clock::now();
+
+        double execution_us =
+            std::chrono::duration<double, std::milli>(
+                after - current_time).count();
+
+        samples.push_back({
+            counters.read_counter(0),
+            counters.read_counter(1),
+            counters.read_counter(2),
+            execution_us
+        });
+
+        diffs_.push_back(execution_us);
     }
     close(tfd);
-    
-    RCLCPP_INFO(
+     
+    RCLCPP_WARN(
         cm->get_logger(),
-        "Control loop completed %f s",
+        "Control loop average time %6f ms",
         ([&]() {
-            std::chrono::duration<double> sum = std::chrono::duration<double>::zero();
+            double sum = 0.0;
             for (const auto& d : diffs_)
                 sum += d;
-            return sum.count()/iteration;
+            return (sum/iteration);
         })()
     );
-    RCLCPP_INFO(cm->get_logger(), "Control loop completed %zu iterations", iteration);
+    RCLCPP_INFO(cm->get_logger(), "Control loop completed %u iterations", iteration);
 
+    /*
     std::ofstream file("diffs.csv");
 
     if (!file.is_open()) {
@@ -202,9 +247,24 @@ std::thread cm_thread([cm, thread_priority, use_sim_time, target_ms, cpu_affinit
         file << "sample,time_s\n";  // Header
 
         for (size_t i = 0; i < diffs_.size(); ++i) {
-            file << i << "," << diffs_[i]. << "\n";
+            file << i << "," << diffs_[i] << "\n";
         }
+    }
+    file.close();
+    */
 
+    std::ofstream file("perf_counters.csv");
+
+    file << "iteration,cycles,instructions,cache_misses,execution_us\n";
+
+    for (size_t i = 0; i < samples.size(); ++i)
+    {
+        file << i << ","
+            << samples[i].cycles << ","
+            << samples[i].instructions << ","
+            << samples[i].misses << ","
+            << samples[i].execution_us << "\n";
+    }
     file.close();
 
 });

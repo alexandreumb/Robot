@@ -152,7 +152,7 @@ int main(int argc, char ** argv)
         .best_effort()
         .durability_volatile();
 
-    auto sub = node->create_subscription<Image8Mb>("camera", qos, [](Image8Mb msg) {} );
+    auto sub = node->create_subscription<Image8Mb>("camera/color/image_raw", qos, [](Image8Mb msg) {} );
 
     std::vector<double> full_us_vec;
     std::vector<double> transport_us_vec;

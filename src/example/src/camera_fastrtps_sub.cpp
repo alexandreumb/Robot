@@ -13,6 +13,7 @@
 #include <time.h>
 #include <vector>
 #include <thread>
+#include <sys/mman.h>
 
 using Image8Mb = fixed_size_msgs::msg::Image8Mb;
 
@@ -20,8 +21,10 @@ using Image8Mb = fixed_size_msgs::msg::Image8Mb;
 #define PRINT               0
 #define IMAGE8MB            1
 #define REALSENSE           0
+#define USE_RT_SCHEDULING    1
+#define USE_CPU_AFFINITY     1
 
-static const std::string OUTPUT_DIR = std::string(getenv("HOME")) + "/latency_data";
+static const std::string OUTPUT_DIR = std::string(getenv("HOME")) + "/latency_data/";
 
 std::atomic<bool> stop{false};
 void signal_handler(int) { stop = true; }
@@ -38,16 +41,20 @@ constexpr int      IMG_TYPE    = CV_16UC1;
 #else
 constexpr int      IMG_TYPE    = CV_8UC3;         // bgr8, 3 bytes per pixel
 #endif
+constexpr int      SUBSCRIBER_CORE = 2;
+constexpr int      RT_PRIORITY     = 40;
 
 void process_image(const cv::Mat & img) { (void)img; }
 
 std::string make_csv_path()
 {
-    system(("mkdir -p " + OUTPUT_DIR).c_str());
+    std::string model = "ros2_cyclonedds";
+    system(("mkdir -p " + OUTPUT_DIR + model).c_str());
     time_t now = time(nullptr);
     struct tm * t = localtime(&now);
     std::ostringstream ss;
-    ss << OUTPUT_DIR << "/latency_run_"
+    ss << OUTPUT_DIR << model
+       << "/latency_run_"
        << std::setfill('0')
        << (t->tm_year + 1900) << "-"
        << std::setw(2) << (t->tm_mon + 1) << "-"
@@ -79,6 +86,29 @@ void save_csv(
               << " frames to " << path << "\n";
 }
 
+void configure_thread()
+{
+#if USE_RT_SCHEDULING
+    struct sched_param param{};
+    param.sched_priority = RT_PRIORITY;
+    if (pthread_setschedparam(pthread_self(), SCHED_FIFO, &param) != 0) {
+        std::cerr << "[WARN] Failed to set RT scheduling\n";
+    } else {
+        std::cout << "[INFO] RT scheduling set: SCHED_FIFO priority " << RT_PRIORITY << "\n";
+    }
+#endif
+#if USE_CPU_AFFINITY
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(SUBSCRIBER_CORE, &cpuset);
+    if (pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset) != 0) {
+        std::cerr << "[WARN] Failed to set CPU affinity\n";
+    } else {
+        std::cout << "[INFO] Thread pinned to core " << SUBSCRIBER_CORE << "\n";
+    }
+#endif
+}
+
 int main(int argc, char ** argv)
 {
     std::signal(SIGINT,  signal_handler);
@@ -88,7 +118,7 @@ int main(int argc, char ** argv)
     auto node = std::make_shared<rclcpp::Node>("camera_subscriber_node");
 
     auto qos = rclcpp::QoS(1)
-        .best_effort()
+        .reliable()
         .durability_volatile();
 
 #if IMAGE8MB
@@ -97,7 +127,8 @@ int main(int argc, char ** argv)
         [](const Image8Mb::SharedPtr) {}
     );
     
-    auto msg = std::make_unique<Image8Mb>();
+    configure_thread();
+    mlockall(MCL_CURRENT | MCL_FUTURE);
 
 #else
     auto sub = node->create_subscription<sensor_msgs::msg::Image>(
@@ -128,15 +159,30 @@ int main(int argc, char ** argv)
 
     while (!stop && rclcpp::ok())
     {
-        rclcpp::MessageInfo msg_info;
-        if (!sub->take(*msg, msg_info)) {
+        auto msg = std::make_unique<Image8Mb>();
+        rclcpp::MessageInfo info;
+        try {
+            if (!sub->take(*msg, info)) {
+                #if defined(__x86_64__) || defined(__i386__)
+                    __asm__ volatile("pause" ::: "memory");
+                #elif defined(__aarch64__) || defined(__arm__)
+                    __asm__ volatile("yield" ::: "memory");
+                #else
+                    std::this_thread::yield();  
+                #endif              
+                continue;
+            }
+        }
+        catch (const rclcpp::exceptions::RCLError & e) {
+            // rmw_iceoryx throws when queue is empty instead of returning false
+            // this is a known bug in rmw_iceoryx — just continue spinning
             #if defined(__x86_64__) || defined(__i386__)
                 __asm__ volatile("pause" ::: "memory");
             #elif defined(__aarch64__) || defined(__arm__)
                 __asm__ volatile("yield" ::: "memory");
             #else
-                std::this_thread::yield();
-            #endif
+                std::this_thread::yield(); 
+            #endif           
             continue;
         }
 

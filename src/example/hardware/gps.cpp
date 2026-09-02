@@ -21,7 +21,7 @@
 namespace example
 {
 
-#define GPS_ACTIVE 1
+#define GPS_ACTIVE 0
 #define WAYPOINT_MIN_DIST_SQ 0.25
 
 //////////////////////////////////////////////////////////////
@@ -136,7 +136,7 @@ void GpsHardware::ethernetLoop()
                 
         if (bytes_received <= 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                std::this_thread::sleep_for(std::chrono::milliseconds(4));
                 continue;
             } else if (bytes_received == 0) {
                 RCLCPP_ERROR(get_logger(), "Socket closed by remote host");
@@ -239,7 +239,6 @@ void GpsHardware::ethernetLoop()
         }
 
         latest_data_.writeFromNonRT(buffer);
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
     RCLCPP_ERROR(get_logger(), "Ethernet loop exiting — GPS data stream has stopped!");
@@ -421,7 +420,7 @@ GpsHardware::export_state_interfaces()
         state_interfaces.emplace_back(n, "accelerometer_x", &joint.state.accelerometer_x );
         state_interfaces.emplace_back(n, "accelerometer_y", &joint.state.accelerometer_y );
         state_interfaces.emplace_back(n, "accelerometer_z", &joint.state.accelerometer_z );
-        state_interfaces.emplace_back(n, "next_point_north", &joint.state.next_point_north );
+        state_interfaces.emplace_back(n, "next_point_north", &joint.state.next_point_north);
         state_interfaces.emplace_back(n, "next_point_east", &joint.state.next_point_east );
         state_interfaces.emplace_back(n, "next_point_down", &joint.state.next_point_down );
     }

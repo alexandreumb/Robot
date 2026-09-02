@@ -148,9 +148,7 @@ RobotSteeringController::RobotSteeringController()
       return controller_interface::CallbackReturn::ERROR;
     }
 
-    auto subscribers_qos = rclcpp::SystemDefaultsQoS();
-    subscribers_qos.keep_last(1);
-    subscribers_qos.best_effort();
+    auto subscribers_qos = rclcpp::QoS(1).best_effort().durability_volatile();
 
     // Reference Subscriber
     ref_timeout_ = rclcpp::Duration::from_seconds(robot_params_.reference_timeout);
@@ -247,7 +245,8 @@ RobotSteeringController::RobotSteeringController()
 
   bool RobotSteeringController::update_odometry(const rclcpp::Duration & period)
   {
-    const double heading =
+    /*
+    const double heading = 
       state_interfaces_[HEADING].get_value();
     const double position_x =
       state_interfaces_[LONGITUDE].get_value();
@@ -265,6 +264,17 @@ RobotSteeringController::RobotSteeringController()
       state_interfaces_[VEL_NORTH].get_value();
     const double velocity_east =
       state_interfaces_[VEL_EAST].get_value();
+    */
+
+    const double heading = 0.0;
+    const double position_x = 0.0;
+    const double position_y = 0.0;
+    const double position_z = 0.0;
+    const double next_position_x = 0.0;
+    const double next_position_y = 0.0;
+    const double next_position_z = 0.0;
+    const double velocity_north = 0.0;
+    const double velocity_east = 0.0;
 
     odometry_.update_from_position(
       heading, position_x, position_y, position_z,
@@ -447,15 +457,27 @@ RobotSteeringController::RobotSteeringController()
   controller_interface::return_type RobotSteeringController::update(
     const rclcpp::Time & time, const rclcpp::Duration & period)
   {
+    i += 1;
     //gpio.set(true);
     auto current_data = *(input_ref_teleop_.readFromRT());
     //3-6 microseconds with camera
     auto current_objects = *(input_ref_img_.readFromRT());
 
+    rclcpp::Time image_time((*(input_ref_teleop_.readFromRT()))->header.stamp, RCL_STEADY_TIME);
     //const auto t = time - (*(input_ref_img_.readFromRT()))->middle_header.stamp;
     //RCLCPP_INFO(get_node()->get_logger(), "Update middle: %f seconds", t.seconds());
-    const auto age_of_last_command = time - (*(input_ref_img_.readFromRT()))->header.stamp; 
-    //RCLCPP_INFO(get_node()->get_logger(), "Update 1: %f seconds", age_of_last_command.seconds());
+    const auto age_of_last_command = time - image_time; 
+    /*
+    if (i % 1000 == 0) {
+      RCLCPP_INFO(get_node()->get_logger(), "Update 1: %ld seconds", age_of_last_command.nanoseconds());
+    }
+    else if (age_of_last_command.nanoseconds() > 1000000)
+    {
+      RCLCPP_INFO(get_node()->get_logger(), "Error: %ld seconds", age_of_last_command.nanoseconds());
+    }
+    */
+    
+
     if (current_objects->has_object == 1)
     {
       //3-9 miocroseconds
@@ -505,7 +527,7 @@ RobotSteeringController::RobotSteeringController()
 
     if (!std::isnan(reference_velocity_) && !std::isnan(reference_angle_))
     {
-      const auto age_of_last_command = time - (*(input_ref_teleop_.readFromRT()))->header.stamp;
+      const auto age_of_last_command = time - image_time;
       //RCLCPP_INFO(get_node()->get_logger(), "Update 2: %f seconds", age_of_last_command.seconds());  
       const auto timeout = false;
 
@@ -554,15 +576,14 @@ RobotSteeringController::RobotSteeringController()
     // Compute and store orientation info
     tf2::Quaternion orientation;
     orientation.setRPY(0.0, 0.0, odometry_.get_heading());
-
     // Populate odom message and publish
     if (rt_odom_state_publisher_->trylock())
     {
       rt_odom_state_publisher_->msg_.header.stamp = time;
-      rt_odom_state_publisher_->msg_.pose.pose.position.x = odometry_.get_x();
+      rt_odom_state_publisher_->msg_.pose.pose.position.x = reference_angle_;
       rt_odom_state_publisher_->msg_.pose.pose.position.y = odometry_.get_y();
       rt_odom_state_publisher_->msg_.pose.pose.orientation = tf2::toMsg(orientation);
-      rt_odom_state_publisher_->msg_.twist.twist.linear.x = odometry_.get_linear();
+      rt_odom_state_publisher_->msg_.twist.twist.linear.x = reference_velocity_;
       rt_odom_state_publisher_->msg_.twist.twist.angular.z = odometry_.get_angular();
       rt_odom_state_publisher_->unlockAndPublish();
     }
@@ -655,10 +676,9 @@ RobotSteeringController::RobotSteeringController()
         "Timestamp in header is missing, using current time as command timestamp.");
         msg->header.stamp = get_node()->now();
     }
-    const auto age_of_last_command = get_node()->now() - msg->header.stamp;
     //RCLCPP_INFO(get_node()->get_logger(), "Reference teleop: %f seconds", age_of_last_command.seconds());
 
-    if (ref_timeout_ == rclcpp::Duration::from_seconds(0) || age_of_last_command <= ref_timeout_)
+    if (ref_timeout_ != rclcpp::Duration::from_seconds(0))
     {
       input_ref_teleop_.writeFromNonRT(msg);
     }

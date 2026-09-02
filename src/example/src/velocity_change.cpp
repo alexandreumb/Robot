@@ -51,14 +51,14 @@ void signal_handler(int)
     running = false; 
 }
 
-/*
+
 inline int64_t monotonic_now_ns()
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return static_cast<int64_t>(ts.tv_sec) * 1'000'000'000LL + ts.tv_nsec;
 }
-*/
+
 void configure_thread()
 {
 #if USE_RT_SCHEDULING
@@ -106,7 +106,7 @@ int main(int argc, char ** argv)
             return 0;
         }
 
-        auto const period_ns = 1'000'000'000LL / 100;
+        auto const period_ns = 1'000'000'000LL / 1000;
         timespec now;
         clock_gettime(CLOCK_MONOTONIC, &now);
 
@@ -145,7 +145,7 @@ int main(int argc, char ** argv)
                 a = angle;
                 manual = manual_override;
             }   
-            auto time = node->now().nanoseconds();
+            auto time = monotonic_now_ns();
             msg.header.stamp.sec = time / 1'000'000'000LL;
             msg.header.stamp.nanosec = time % 1'000'000'000LL;
             msg.velocity = v;

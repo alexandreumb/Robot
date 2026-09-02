@@ -147,6 +147,21 @@ public:
         return (*reg >> bit_) & 0x1u;
     }
 
+    void configure_output()
+    {
+        volatile uint32_t* enable = reg_ptr(enable_config_off_);
+        uint32_t v = *enable;
+
+        v |= (1u << bit_);
+        *enable = v; 
+        
+        volatile uint32_t* output = reg_ptr(output_control_off_);
+        v = *output;
+
+        v |= (1u << bit_);
+        *output = v; 
+    }
+
     // Write path — only call once you've verified read-only mapping first
     // AND constructed this object with writable = true.
     void set(bool high)

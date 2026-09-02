@@ -16,7 +16,7 @@ using Image8Mb = fixed_size_msgs::msg::Image8Mb;
 // USE_WAITSET 0 → standard rclcpp::spin with callback (simpler, easier to integrate)
 #define USE_WAITSET         1
 #define USE_CLOCK_MONOTONIC 1
-#define REALSENSE           1
+#define REALSENSE           0
 
 std::atomic<bool> stop{false};
 void signal_handler(int) { stop = true; }
@@ -62,10 +62,12 @@ void handle_message(
     const double full_us      = static_cast<double>(receive_ns - msg.timestamp)         / 1000.0;
     const double transport_us = static_cast<double>(receive_ns - msg.publish_timestamp) / 1000.0;
 
-    stats.total_full_us      += full_us;
-    stats.total_transport_us += transport_us;
-    stats.min_transport_us    = std::min(stats.min_transport_us, transport_us);
-    stats.max_transport_us    = std::max(stats.max_transport_us, transport_us);
+    if (stats.frame_count > 500) {
+        stats.total_full_us      += full_us;
+        stats.total_transport_us += transport_us;
+        stats.min_transport_us    = std::min(stats.min_transport_us, transport_us);
+        stats.max_transport_us    = std::max(stats.max_transport_us, transport_us);
+    }
     ++stats.frame_count;
 
     // zero-copy Mat header over received buffer — no memcpy
@@ -73,21 +75,10 @@ void handle_message(
         static_cast<int>(msg.image_intrinsics.height),
         static_cast<int>(msg.image_intrinsics.width),
         IMG_TYPE,
-        const_cast<uint8_t *>(msg.data_depth.data())
+        const_cast<uint8_t *>(msg.data_color.data())
     );
 
     process_image(img);
-
-    if (stats.frame_count % 150 == 0) {
-        RCLCPP_INFO(logger,
-            "Frames: %lu | full A→D: %.1f us | transport B→D: %.1f us "
-            "| min: %.1f us | max: %.1f us",
-            stats.frame_count,
-            stats.total_full_us      / static_cast<double>(stats.frame_count),
-            stats.total_transport_us / static_cast<double>(stats.frame_count),
-            stats.min_transport_us,
-            stats.max_transport_us);
-    }
 }
 
 void print_summary(const LatencyStats & stats, rclcpp::Logger logger)
@@ -96,11 +87,12 @@ void print_summary(const LatencyStats & stats, rclcpp::Logger logger)
         RCLCPP_WARN(logger, "No frames received");
         return;
     }
-    const double avg_full      = stats.total_full_us      / static_cast<double>(stats.frame_count);
-    const double avg_transport = stats.total_transport_us / static_cast<double>(stats.frame_count);
+    auto frame_count = stats.frame_count - 500;
+    const double avg_full      = stats.total_full_us      / static_cast<double>(frame_count);
+    const double avg_transport = stats.total_transport_us / static_cast<double>(frame_count);
     RCLCPP_INFO(logger, "──────────────────────────────────────────");
     RCLCPP_INFO(logger, "Transport time summary");
-    RCLCPP_INFO(logger, "  Frames received      : %lu",   stats.frame_count);
+    RCLCPP_INFO(logger, "  Frames received      : %lu",   frame_count);
     RCLCPP_INFO(logger, "  Full latency   A→D   : %.1f us (%.3f ms)", avg_full,      avg_full      / 1000.0);
     RCLCPP_INFO(logger, "  Transport only B→D   : %.1f us (%.3f ms)", avg_transport, avg_transport / 1000.0);
     RCLCPP_INFO(logger, "  Camera buffering A→B : %.1f us (%.3f ms)",
@@ -119,9 +111,11 @@ int main(int argc, char ** argv)
     auto node = std::make_shared<rclcpp::Node>("camera_subscriber_node");
 
     // ── QoS: must match publisher exactly ────────────────────────────────────
-    auto qos = rclcpp::QoS(1)
-        .best_effort()
-        .durability_volatile();
+    auto qos = rclcpp::QoS(
+        rclcpp::KeepLast(1)
+    )
+    .reliable()
+    .durability_volatile();
 
     LatencyStats stats;
 
@@ -133,7 +127,7 @@ int main(int argc, char ** argv)
 
     // dummy callback required by create_subscription API even with WaitSet
     auto sub = node->create_subscription<Image8Mb>(
-        "camera", qos,
+        "camera/color/image_raw", qos,
         [](const Image8Mb::SharedPtr) {}
     );
 
@@ -148,7 +142,7 @@ int main(int argc, char ** argv)
     while (!stop && rclcpp::ok())
     {
         // block up to 100ms — allows checking !stop periodically
-        auto wait_result = wait_set.wait(std::chrono::milliseconds(100));
+        auto wait_result = wait_set.wait(std::chrono::milliseconds(20));
 
         if (wait_result.kind() != rclcpp::WaitResultKind::Ready) {
             continue;
