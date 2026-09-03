@@ -17,7 +17,7 @@ using Image8Mb = msgs::msg::Image8Mb;
 // When USE_CLOCK_MONOTONIC = 1 in the subscriber, set it to 1 here too.
 // Both sides must use the same clock or diffs will be meaningless.
 #define USE_CLOCK_MONOTONIC 1
-#define REALSENSE           0
+#define REALSENSE           1
 #define USE_RT_SCHEDULING   1
 #define USE_CPU_AFFINITY    1
 
@@ -40,11 +40,11 @@ inline int64_t monotonic_now_ns()
 
 // ── constants — must match camera and fixed_size_msgs layout ─────────────────
 constexpr int      RT_PRIORITY = 40;     //needs to be inferior to the prority of the nvidia drivers which is 50
-constexpr int      SUBSCRIBER_CORE = 2;
+constexpr int      SUBSCRIBER_CORE = 4;
 
 constexpr int      CAM_INDEX   = 2;
-constexpr int      IMG_WIDTH   = 1280;
-constexpr int      IMG_HEIGHT  = 720;
+constexpr int      IMG_WIDTH   = 565;
+constexpr int      IMG_HEIGHT  = 489;
 constexpr int      WARMUP_CHUNKS = 8; // >= your mempool count for this chunk size
 constexpr int      IMG_TYPE_DEPTH    = CV_16UC1;      
 constexpr int      IMG_TYPE_COLOR    = CV_8UC3;         // bgr8, 3 bytes per pixel
@@ -108,7 +108,7 @@ int main(int argc, char ** argv)
 
 #else
 
-    auto image = cv::imread("/home/alexandre/Pictures/images.jpg", cv::IMREAD_COLOR);
+    auto image = cv::imread("/home/robotics4farmers/Pictures/Screenshots/r4f_icon.png", cv::IMREAD_COLOR);
 
     // ── camera init ──────────────────────────────────────────────────────────
     /*
@@ -151,6 +151,7 @@ int main(int argc, char ** argv)
     // ── main capture + publish loop ───────────────────────────────────────────
     while (!stop)
     {
+        RCLCPP_INFO_ONCE(node->get_logger(), "Publishing at %d Hz", CAM_FREQ_HZ);
         
 #if REALSENSE
         rs2::frameset frames   = p.wait_for_frames();
@@ -164,21 +165,36 @@ int main(int argc, char ** argv)
             .and_then([&](void *userPayload) {
                 auto *msg = new (userPayload) Image8Mb;
 
-                #if USE_CLOCK_MONOTONIC
-                        msg->timestamp    = monotonic_now_ns();
-                        std::cout << msg->timestamp << std::endl;
-                #else
-                        msg->timestamp    = node->now().nanoseconds();
-                        std::cout << msg->timestamp << std::endl;
-                #endif                
+#if USE_CLOCK_MONOTONIC
+                auto timestamp = monotonic_now_ns();
+                msg->header.stamp.sec = timestamp / 1'000'000'000LL;
+                msg->header.stamp.nanosec = timestamp % 1'000'000'000LL;
+#else
+                msg->header.stamp    = node->now();
+#endif                
 
-                memcpy(msg->data_color.data(), image.data, IMG_WIDTH * IMG_HEIGHT * PIXEL_BYTES);
-            
-                time_dif += (double)((monotonic_now_ns() - msg->timestamp)/1e6);
-                ite+= 1;
+#if REALSENSE
+                memcpy(msg->data_color.data(), color.get_data(), color.get_height() * color.get_stride_in_bytes());
+                memcpy(msg->data_depth.data(), depth.get_data(), depth.get_height() * depth.get_stride_in_bytes());
                 msg->image_intrinsics.width = IMG_WIDTH;
                 msg->image_intrinsics.height = IMG_HEIGHT;
+                msg->image_intrinsics.fx = color_intrinsics.fx;
+                msg->image_intrinsics.fy = color_intrinsics.fy;
+                msg->image_intrinsics.ppx = color_intrinsics.ppx;
+                msg->image_intrinsics.ppy = color_intrinsics.ppy;
+                msg->image_intrinsics.depth_units = depth_scale;
+                msg->step_depth   = depth.get_stride_in_bytes();
+                msg->step_color   = color.get_stride_in_bytes();
+
+#else
+                memcpy(msg->data_color.data(), image.data, IMG_WIDTH * IMG_HEIGHT * PIXEL_BYTES);
                 msg->step_color         = static_cast<uint32_t>(step);
+                msg->image_intrinsics.width = IMG_WIDTH;
+                msg->image_intrinsics.height = IMG_HEIGHT;
+#endif
+            
+                time_dif += (double)((monotonic_now_ns() - timestamp)/1e6);
+                ite+= 1;
                 msg->is_bigendian = false;
                 msg->frequency    = CAM_FREQ_HZ;
 
@@ -187,7 +203,6 @@ int main(int argc, char ** argv)
 #else
                 msg->publish_timestamp = node->now().nanoseconds();
 #endif
-
                 pub.publish(userPayload);
                 std::this_thread::sleep_for(
                     std::chrono::milliseconds(1000 / CAM_FREQ_HZ)
@@ -198,7 +213,6 @@ int main(int argc, char ** argv)
                 std::cerr << "Unable to loan sample, error: " << error << std::endl;
             });
     }
-
     RCLCPP_INFO(node->get_logger(), "%f ms", (time_dif/ite));
 
 #if REALSENSE
