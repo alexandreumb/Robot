@@ -15,7 +15,7 @@
 #include "iceoryx_posh/popo/wait_set.hpp"
 #include "iceoryx_posh/runtime/posh_runtime.hpp"
 
-#define GPU 0
+#define GPU 1
 #if GPU
     #include "Yolo_Tensorrt/yolov8.h"
 #endif
@@ -64,6 +64,10 @@ constexpr int      SUBSCRIBER_CORE = 4;
 constexpr int      RT_PRIORITY     = 40;
 constexpr int      IMG_TYPE_COLOR    = CV_8UC3;         // bgr8, 3 bytes per pixel
 constexpr int      IMG_TYPE_DEPTH    = CV_16UC1;         
+constexpr size_t   PIXEL_BYTES_COLOR = 3;
+constexpr size_t   PIXEL_BYTES_DEPTH = 2;
+constexpr int      IMG_WIDTH   = 1280;
+constexpr int      IMG_HEIGHT  = 720;
 
 // ── struct ──────────────────────────────────────────────────────
 struct Frame
@@ -71,7 +75,7 @@ struct Frame
     cv::Mat color;
     cv::Mat depth;
     image_intrinsics intrinsics;
-    std_msgs::msg::Header timestamp;
+    int64_t timestamp;
     int64_t transfer_time;
 };
 
@@ -84,12 +88,14 @@ struct TimesToAnalyze
 };  
 
 // ── globals ───────────────────────────────────────────────────────────────────
+std::atomic<bool> swap{false};
+std::atomic<bool> new_image_available{false};
 std::atomic<bool> stop{false};
 std::mutex write_mutex;
-std::optional<Frame> latest_frame;
 std::optional<TimesToAnalyze> latest_times;
 //TimesToAnalyze latest_times;
 std::condition_variable frame_cv;
+Frame frames[2];
 
 static double   total_full_ms{0.0};
 static double   total_transport_ms{0.0};
@@ -124,7 +130,7 @@ std::string make_csv_path(std::string engine_file_path)
     else {
         model = "yolo11";
     }
-    
+    model = "native_iceoryx/gpu";
     system(("mkdir -p " + OUTPUT_DIR + model).c_str());
     time_t now = time(nullptr);
     struct tm * t = localtime(&now);
@@ -265,6 +271,7 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
     mlockall(MCL_CURRENT | MCL_FUTURE);
 
 // Processing thread
+
     std::thread process_image_and_pub([&] ()
     {
         int policy;
@@ -275,39 +282,40 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
         std::cout << "policy = " << policy
         << ", priority = " << param.sched_priority
         << '\n';
+
+        int read_index = 0;
         while (!stop)
         {
-            Frame current_frame;
             TimesToAnalyze current_times;
             {
-                std::unique_lock<std::mutex> lock(write_mutex);
-                frame_cv.wait(lock, [&]{ return latest_frame.has_value() || stop;});
-                
+                std::unique_lock<std::mutex> lock(write_mutex);   
+                frame_cv.wait(lock, [] {return new_image_available || stop.load(); });     
                 if (stop)
-                break;
+                    break;
                 
-                current_frame = std::move(*latest_frame);
+                new_image_available = false;
+
                 current_times = std::move(*latest_times);
-                latest_frame.reset();
                 latest_times.reset();
             }
         
-            auto transfer_duration = monotonic_now_ns() - current_frame.transfer_time;
+            auto transfer_duration = monotonic_now_ns() - frames[read_index].transfer_time;
             ImgAnalyze obj_msg;
             obj_msg.has_object = 0;
 #if GPU 
             auto before = monotonic_now_ns();
-            std::vector<Object> objects = process_image(detector, current_frame.color, current_frame.depth, current_frame.intrinsics);
+            std::vector<Object> objects = process_image(detector, frames[read_index].color, frames[read_index].depth, frames[read_index].intrinsics);
             auto after = monotonic_now_ns();
             auto process_duration = after - before;
-#endif
 #if SAVE_CSV
-            current_times.transfer_thread_ms = static_cast<double>(transfer_duration) / 1e6;
-            current_times.process_time_ms = static_cast<double>(0.0) / 1e6;
-            times.push_back(current_times);
-            object_identified.push_back(0);
+            TimesToAnalyze latest_times{current_times.full_ms,
+                    current_times.transport_ms,
+                    static_cast<double>(process_duration) / 1e6,
+                    static_cast<double>(transfer_duration) / 1e6};
+
+            times.push_back(latest_times);
+            object_identified.push_back(objects.size());
 #endif
-            /*
             if (objects.size() > 0)
             {
                 //RCLCPP_INFO(node->get_logger(), "%lu objects detected in the current frame.", objects.size());
@@ -329,21 +337,57 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
                     obj_msg.object[i].point3d.z = objects[i].Pose3D[2];
                 }
             }                 
-            */
-            obj_msg.header = current_frame.timestamp;
+#else
+#if SAVE_CSV
+            TimesToAnalyze latest_times{current_times.full_ms,
+                    current_times.transport_ms,
+                    0.0,
+                    static_cast<double>(transfer_duration) / 1e6};
+
+            times.push_back(latest_times);
+            object_identified.push_back(0);
+#endif
+#endif    
+            obj_msg.header.stamp.sec = frames[read_index].timestamp / 1'000'000'000LL;
+            obj_msg.header.stamp.nanosec = frames[read_index].timestamp % 1'000'000'000LL;
             obj_msg.middle_header.stamp = node->now();
             //RCLCPP_INFO(node->get_logger(), "Publishing image time: %llu.", (node->now().nanoseconds() - obj_msg.header.stamp.sec * 1'000'000'000LL - obj_msg.header.stamp.nanosec)%1'000'000'000LL);
             
             pub->publish(obj_msg);
+
+            swap = !swap;
         }
     });
-      
+
+
     waitset->attachState(iox_sub, iox::popo::SubscriberState::HAS_DATA).or_else([](auto) {
         std::cerr << "failed to attach subscriber" << std::endl;
         std::exit(EXIT_FAILURE);
     });
 
+    frames[0].color.create(
+        static_cast<int>(IMG_HEIGHT),
+        static_cast<int>(IMG_WIDTH),
+        IMG_TYPE_COLOR
+    );
+    frames[0].depth.create(
+        static_cast<int>(IMG_HEIGHT),
+        static_cast<int>(IMG_WIDTH),
+        IMG_TYPE_DEPTH
+    );
+    frames[1].color.create(
+        static_cast<int>(IMG_HEIGHT),
+        static_cast<int>(IMG_WIDTH),
+        IMG_TYPE_COLOR
+    );
+    frames[1].depth.create(
+        static_cast<int>(IMG_HEIGHT),
+        static_cast<int>(IMG_WIDTH),
+        IMG_TYPE_DEPTH
+    );
+
     // ── main loop ─────────────────────────────────────────────────────────────
+    int writer_index = 0;
     while (!stop && rclcpp::ok())
     {
         auto notifications = waitset->wait();
@@ -367,10 +411,8 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
 
                     const auto * msg = static_cast<const Image8Mb *>(userPayload);
                     // ── Step 3: measure latency ───────────────────────────────────────
-                    const double full_ms = static_cast<double>(
-                        receive_ns - (msg->header.stamp.sec * 1'000'000'000LL + msg->header.stamp.nanosec)) / 1e6; // convert to milliseconds
-                    const double transport_ms = static_cast<double>(
-                        receive_ns - msg->publish_timestamp) / 1e6; // convert to miliseconds
+                    const double full_ms = static_cast<double>(receive_ns - msg->timestamp) / 1e6; // convert to milliseconds
+                    const double transport_ms = static_cast<double>(receive_ns - msg->publish_timestamp) / 1e6; // convert to miliseconds
 
                     total_full_ms      += full_ms;
                     total_transport_ms += transport_ms;
@@ -381,20 +423,6 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
                     // ── Step 4: construct Mat header over shared memory ───────────────
                     // NO memcpy — Mat points directly at iceoryx chunk.
                     // process_image() must complete before release() is called below.
-                    cv::Mat img_color(
-                        static_cast<int>(msg->image_intrinsics.height),
-                        static_cast<int>(msg->image_intrinsics.width),
-                        IMG_TYPE_COLOR,
-                        const_cast<uint8_t *>(msg->data_color.data())
-                    );
-
-                    cv::Mat img_depth(
-                        static_cast<int>(msg->image_intrinsics.height),
-                        static_cast<int>(msg->image_intrinsics.width),
-                        IMG_TYPE_DEPTH,
-                        const_cast<uint8_t *>(msg->data_depth.data())
-                    );
-
 
                     image_intrinsics img_intrinsics;
                     img_intrinsics.width = msg->image_intrinsics.width;  
@@ -406,23 +434,44 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
                     img_intrinsics.depth_units = msg->image_intrinsics.depth_units;
                     
                     {
-                        std::lock_guard<std::mutex> lock(write_mutex);
+                        std::unique_lock<std::mutex> lock(write_mutex);
                         latest_times = TimesToAnalyze{
                             full_ms,
                             transport_ms,
                             0,
                             0
                         };
-                        
-                        latest_frame = Frame{
-                            img_color.clone(),
-                            img_depth.clone(),
-                            img_intrinsics,
-                            msg->header,
-                            monotonic_now_ns(),
-                        };
+
+                        if (!new_image_available) {
+                            new_image_available = true;
+                        }
+
+                        writer_index = 1;
+                        if (swap) {
+                            memcpy(frames[writer_index].color.data, msg->data_color.data(), msg->image_intrinsics.width * msg->image_intrinsics.height * PIXEL_BYTES_COLOR);
+                            memcpy(frames[writer_index].depth.data, msg->data_depth.data(), msg->image_intrinsics.width * msg->image_intrinsics.height * PIXEL_BYTES_DEPTH);
+                            frames[writer_index].intrinsics = img_intrinsics;
+                            frames[writer_index].timestamp = msg->timestamp;
+                            frames[writer_index].transfer_time = monotonic_now_ns();
+                            std::swap(frames[0].color, frames[1].color);
+                            std::swap(frames[0].depth, frames[1].depth);
+
+                            std::swap(frames[0].intrinsics, frames[1].intrinsics);
+                            std::swap(frames[0].timestamp, frames[1].timestamp);
+                            std::swap(frames[0].transfer_time, frames[1].transfer_time);
+
+                        }
+                        else {
+                            memcpy(frames[writer_index].color.data, msg->data_color.data(), msg->image_intrinsics.width * msg->image_intrinsics.height * PIXEL_BYTES_COLOR);
+                            memcpy(frames[writer_index].depth.data, msg->data_depth.data(), msg->image_intrinsics.width * msg->image_intrinsics.height * PIXEL_BYTES_DEPTH);
+                            frames[writer_index].intrinsics = img_intrinsics;
+                            frames[writer_index].timestamp = msg->timestamp;
+                            frames[writer_index].transfer_time = monotonic_now_ns();
+                        }
+
                     }
                     frame_cv.notify_one();
+                    
 
                     // ── Step 6: release chun  k back to iceoryx pool ────────────────────
                     // Must be called — otherwise the pool exhausts and publisher stalls.
