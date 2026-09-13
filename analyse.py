@@ -17,7 +17,7 @@ import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-from openpyxl.chart import LineChart, Reference
+from openpyxl.chart import LineChart, Reference, BarChart
 import matplotlib.pyplot as plt
 
 def load_runs(input_dir, i):
@@ -175,59 +175,107 @@ def add_raw_sheet(wb, runs_df):
 
 
 def add_chart_sheet(wb, runs_df):
-    """Add a line chart of latency over frames, excluding outliers."""
+    """Add histogram charts of latency with 0.2 ms bin width."""
 
-    ws = wb.create_sheet("Median Chart")
+    ws = wb.create_sheet("Histogram")
 
-    # Remove outliers
-    # chart_df = runs_df.apply(remove_outliers)
-    chart_df = runs_df
-    # Downsample ONLY for the chart
-    # Change 100 to whatever gives the desired visual density
-    BIN_SIZE = 50
+    BIN_SIZE = 0.05  # milliseconds
 
-    median_df = chart_df.groupby(chart_df.index // BIN_SIZE).median()
-    max_df = chart_df.groupby(chart_df.index // BIN_SIZE).max()
-    # Helper sheet containing only chart data
-    data_ws = wb.create_sheet("Chart Data")
+    # Hidden worksheet containing histogram data
+    data_ws = wb.create_sheet("Histogram Data")
+    data_ws.cell(row=1, column=1, value="Latency (ms)")
 
-    data_ws.cell(row=1, column=1, value="Frame")
+    # Find global min/max across all runs
+    values = runs_df.stack().dropna()
 
-    for col_idx, run_name in enumerate(median_df.columns, 2):
-        data_ws.cell(row=1, column=col_idx, value=run_name)
+    if values.empty:
+        return ws
 
-    for row_idx, frame_idx in enumerate(median_df.index, 2):
-        data_ws.cell(row=row_idx, column=1, value=frame_idx)
+    min_value = values.min()
+    max_value = values.max()
 
-        for col_idx, run_name in enumerate(median_df.columns, 2):
-            value = median_df.loc[frame_idx, run_name]
+    # Align bins to multiples of 0.05
+    bin_start = int(min_value // BIN_SIZE) * BIN_SIZE
+    bin_end = (int(max_value // BIN_SIZE) + 1) * BIN_SIZE
 
-            if pd.notna(value):
-                data_ws.cell(
-                    row=row_idx,
-                    column=col_idx,
-                    value=float(value)
-                )
+    # Generate bin edges
+    bins = []
+    current = bin_start
+
+    while current <= bin_end:
+        bins.append(round(current, 10))
+        current += BIN_SIZE
+
+    # Bin labels = center of each bin
+    bin_labels = [
+        round((bins[i] + bins[i + 1]) / 2, 3)
+        for i in range(len(bins) - 1)
+    ]
+
+    # Write bin labels
+    for row_idx, label in enumerate(bin_labels, 2):
+        data_ws.cell(
+            row=row_idx,
+            column=1,
+            value=label
+        )
+
+    # Create histogram counts for each run
+    for col_idx, run_name in enumerate(runs_df.columns, 2):
+
+        data_ws.cell(
+            row=1,
+            column=col_idx,
+            value=run_name
+        )
+
+        series = runs_df[run_name].dropna()
+
+        # Calculate counts for each bin
+        counts = []
+
+        for i in range(len(bins) - 1):
+            lower = bins[i]
+            upper = bins[i + 1]
+
+            # Include lower bound, exclude upper bound
+            count = ((series >= lower) & (series < upper)).sum()
+
+            counts.append(int(count))
+
+        # Write counts
+        for row_idx, count in enumerate(counts, 2):
+            data_ws.cell(
+                row=row_idx,
+                column=col_idx,
+                value=count
+            )
 
     data_ws.sheet_state = "hidden"
 
-    # Chart
-    chart = LineChart()
-    chart.title = "Latency per Frame"
+    # Create chart
+    chart = BarChart()
+
+    chart.type = "col"
     chart.style = 10
-    chart.y_axis.title = "Latency (ms)"
-    chart.x_axis.title = "Frame"
+
+    chart.title = "Latency Distribution"
+    chart.y_axis.title = "Frequency"
+    chart.x_axis.title = "Latency (ms)"
+
     chart.width = 30
     chart.height = 15
 
-    max_frames = len(median_df)
+    max_rows = len(bin_labels) + 1
 
-    for col_idx in range(2, len(median_df.columns) + 2):
+    # Add each run as a separate series
+    for col_idx in range(2, len(runs_df.columns) + 2):
+
         data_ref = Reference(
             data_ws,
             min_col=col_idx,
             min_row=1,
-            max_row=max_frames + 1
+            max_row=max_rows
         )
 
         chart.add_data(
@@ -235,14 +283,18 @@ def add_chart_sheet(wb, runs_df):
             titles_from_data=True
         )
 
+    # X-axis categories
     categories = Reference(
         data_ws,
         min_col=1,
         min_row=2,
-        max_row=max_frames + 1
+        max_row=max_rows
     )
 
     chart.set_categories(categories)
+
+    # Make bars touch, like a histogram
+    chart.gapWidth = 0
 
     ws.add_chart(chart, "A1")
 
@@ -323,11 +375,15 @@ def add_max_chart_sheet(wb, runs_df):
 
 def main():
     all_runs = []
-    inputs = ["/home/robotics4farmers/Dev/Robot/perf_counters_sched.csv", 
-            "/home/robotics4farmers/Dev/Robot/perf_counters.csv",]
+    inputs = ["/home/robotics4farmers/Dev/Robot/analyse_1000/perf_counters_sched.csv", 
+            "/home/robotics4farmers/Dev/Robot/analyse_1000/perf_counters.csv",
+            "/home/robotics4farmers/Dev/Robot/analyse_100/perf_counters_sched.csv",
+            "/home/robotics4farmers/Dev/Robot/analyse_100/perf_counters.csv"]
 
-    outputs = ["/home/robotics4farmers/Dev/Robot/latency_results_sched.xlsx", 
-            "/home/robotics4farmers/Dev/Robot/latency_results.xlsx"]
+    outputs = ["/home/robotics4farmers/Dev/Robot/analyse_1000/latency_results_sched.xlsx", 
+            "/home/robotics4farmers/Dev/Robot/analyse_1000/latency_results.xlsx",
+            "/home/robotics4farmers/Dev/Robot/analyse_100/latency_results_sched.xlsx",
+            "/home/robotics4farmers/Dev/Robot/analyse_100/latency_results.xlsx"]
 
     for i in range(len(inputs)):
         print(f"[INFO] Loading runs from {inputs[i]}")
@@ -374,13 +430,17 @@ def main():
     bp_2 = ax_2.boxplot(boxplot_transport)
 
     ax_1.set_xticklabels([
-        "Schedutil",
-        "Performance"
+        "1000-Schedutil",
+        "1000-Performance",
+        "100-Schedutil",
+        "100-Performance"
     ])
 
     ax_2.set_xticklabels([
-        "Schedutil",
-        "Performance"
+        "1000-Schedutil",
+        "1000-Performance",
+        "100-Schedutil",
+        "100-Performance"
     ])
 
     ax_1.set_ylabel("Latency (ms)")
