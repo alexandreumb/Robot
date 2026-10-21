@@ -78,6 +78,7 @@ namespace joint_state_broadcaster
     else
     {
       state_interfaces_config.type = controller_interface::interface_configuration_type::INDIVIDUAL;
+      int interface = 0;
       for (const auto &joint : params_.joints)
       {
         if (params_.interfaces.empty())
@@ -93,10 +94,8 @@ namespace joint_state_broadcaster
         }
         else
         {
-          for (const auto &interface : params_.interfaces)
-          {
-            state_interfaces_config.names.push_back(joint + "/" + interface);
-          }
+          state_interfaces_config.names.push_back(joint + "/" + params_.interfaces[interface]);
+          interface++;
         }
       }
     }
@@ -113,7 +112,7 @@ namespace joint_state_broadcaster
       return controller_interface::CallbackReturn::ERROR;
     }
     params_ = param_listener_->get_params();
-
+    
     if (use_all_available_interfaces())
     {
       RCLCPP_INFO(
