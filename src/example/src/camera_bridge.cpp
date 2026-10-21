@@ -130,10 +130,9 @@ int main(int argc, char ** argv)
             // The publisher wrote Image8Mb in-place via borrow_loaned_message.
             const auto * src = static_cast<const Image8Mb *>(userPayload);
 
-            const int64_t time_ns = src->timestamp;
             auto ros_img = std::make_unique<sensor_msgs::msg::Image>();
-            ros_img->header.stamp.sec = static_cast<int32_t>(time_ns / 1'000'000'000LL);
-            ros_img->header.stamp.nanosec = static_cast<int32_t>(time_ns % 1'000'000'000LL);
+            ros_img->header.stamp.sec = src->timestamp / 1'000'000'000LL;
+            ros_img->header.stamp.nanosec = src->timestamp % 1'000'000'000LL;
             ros_img->header.frame_id = "camera_link";
             ros_img->height = src->image_intrinsics.height;
             ros_img->width = src->image_intrinsics.width;

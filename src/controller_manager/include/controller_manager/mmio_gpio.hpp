@@ -30,9 +30,15 @@
 #include <fcntl.h>
 #include <stdexcept>
 #include <sys/mman.h>
-#include <unistd.h>
-#include <iostream>
 #include <algorithm>
+#include <unistd.h>
+#include <gpiod.h>
+#include <sys/timerfd.h>
+
+// Added headers
+#include <sched.h>
+#include <cstring>
+#include <iostream>
 
 class MmioGpio
 {
@@ -79,11 +85,10 @@ public:
         // is lowest at 0x12800, output_value highest at 0x12810) plus margin.
         uint32_t max_offset = std::max({output_value_off, output_control_off, enable_config_off});
         size_t map_size = ((page_offset_ + max_offset + sizeof(uint32_t) + page_size - 1) / page_size) * page_size;
-        gpio_map_total_ = map_size + page_offset_;
-
+        
         void* map = mmap(
             nullptr,
-            gpio_map_total_,
+            map_size + page_offset_,
             writable ? (PROT_READ | PROT_WRITE) : PROT_READ,
             MAP_SHARED,
             fd_,
@@ -103,11 +108,10 @@ public:
         // Map enough to cover the highest offset we reference (enable_config
         // is lowest at 0x12800, output_value highest at 0x12810) plus margin.
         map_size = ((pactl_page_offset_ + pactl_offset_ + sizeof(uint32_t) + page_size - 1) / page_size) * page_size;
-        pactl_map_total_ = map_size + pactl_page_offset_;
-
+    
         map = mmap(
             nullptr,
-            pactl_map_total_,
+            map_size + pactl_page_offset_,
             writable ? (PROT_READ | PROT_WRITE) : PROT_READ,
             MAP_SHARED,
             fd_,
@@ -125,10 +129,10 @@ public:
     ~MmioGpio()
     {
         if (base_) {
-            munmap(const_cast<uint8_t*>(base_), gpio_map_total_);
+            munmap(const_cast<uint8_t*>(base_), 0x1000 + page_offset_);
         }        
         if (pactl_) {
-            munmap(const_cast<uint8_t*>(pactl_), pactl_map_total_);
+            munmap(const_cast<uint8_t*>(pactl_), 0x1000 + pactl_page_offset_);
         }
         if (fd_ >= 0) close(fd_);
     }
@@ -147,21 +151,6 @@ public:
         return (*reg >> bit_) & 0x1u;
     }
 
-    void configure_output()
-    {
-        volatile uint32_t* enable = reg_ptr(enable_config_off_);
-        uint32_t v = *enable;
-
-        v |= (1u << bit_);
-        *enable = v; 
-        
-        volatile uint32_t* output = reg_ptr(output_control_off_);
-        v = *output;
-
-        v |= (1u << bit_);
-        *output = v; 
-    }
-
     // Write path — only call once you've verified read-only mapping first
     // AND constructed this object with writable = true.
     void set(bool high)
@@ -175,6 +164,20 @@ public:
         else      v &= ~(1u << bit_);
         *reg = v;
     }
+
+    void configure_output()
+    {
+        volatile uint32_t* enable =
+            reg_ptr(enable_config_off_);
+
+        *enable = 0x00000003;
+
+        volatile uint32_t* output =
+            reg_ptr(output_control_off_);
+
+        *output = 0x00000000;
+    }
+
 
     void configure_pactl()
     {
@@ -210,7 +213,5 @@ private:
     uint32_t output_value_off_;
     uint32_t output_control_off_;
     uint32_t enable_config_off_;
-    size_t pactl_map_total_;
-    size_t gpio_map_total_;
     bool writable_ = false;
 };

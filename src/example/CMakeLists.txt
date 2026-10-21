@@ -17,11 +17,11 @@ find_package(pluginlib REQUIRED)
 find_package(ros2_control REQUIRED)
 find_package(serial REQUIRED)
 find_package(OpenCV REQUIRED)
-find_package(fixed_size_msgs REQUIRED)
 find_package(iceoryx_posh REQUIRED)
 find_package(iceoryx_hoofs REQUIRED)
 find_package(realsense2 REQUIRED)
 find_package(msgs REQUIRED)
+find_package(fixed_size_msgs REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
@@ -45,17 +45,9 @@ add_executable(camera1_pub src/camera1_pub.cpp)
 ament_target_dependencies(camera1_pub OpenCV rclcpp msgs realsense2)
 target_link_libraries(camera1_pub iceoryx_hoofs::iceoryx_hoofs iceoryx_posh::iceoryx_posh ${realsense2_LIBRARY})
 
-add_executable(camera_2 src/camera_2_image_pub.cpp)
-ament_target_dependencies(camera_2 rclcpp fixed_size_msgs sensor_msgs OpenCV)
-target_link_libraries(camera_2 iceoryx_posh::iceoryx_posh iceoryx_hoofs::iceoryx_hoofs)
-
 add_executable(camera_bridge src/camera_bridge.cpp)
 ament_target_dependencies(camera_bridge rclcpp msgs sensor_msgs OpenCV)
 target_link_libraries(camera_bridge iceoryx_posh::iceoryx_posh iceoryx_hoofs::iceoryx_hoofs)
-
-add_executable(camera_sub_nav2 src/camera_sub_nav2.cpp)
-ament_target_dependencies(camera_sub_nav2 rclcpp sensor_msgs OpenCV)
-target_link_libraries(camera_sub_nav2 iceoryx_hoofs::iceoryx_hoofs iceoryx_posh::iceoryx_posh)
 
 add_executable(velocity_change src/velocity_change.cpp)
 ament_target_dependencies(velocity_change rclcpp msgs)
@@ -77,45 +69,21 @@ target_include_directories(camera_sub_iceoryx_nativo PRIVATE
 # add to CMakeLists.txt temporarily
 # target_compile_options(camera1_sub_iceoryx_nativo PRIVATE -fsanitize=address)
 # target_link_options(camera1_sub_iceoryx_nativo PRIVATE -fsanitize=address)
-
-add_executable(camera_sub_ros2_iceoryx src/camera_sub_ros2_iceoryx.cpp)
-ament_target_dependencies(camera_sub_ros2_iceoryx rclcpp OpenCV fixed_size_msgs)
-target_link_libraries(camera_sub_ros2_iceoryx iceoryx_hoofs::iceoryx_hoofs iceoryx_posh::iceoryx_posh)
+add_executable(camera_sub_iceoryx_no_thread src/camera_sub_iceoryx_no_thread.cpp)
+ament_target_dependencies(camera_sub_iceoryx_no_thread rclcpp OpenCV msgs)
+target_link_libraries(camera_sub_iceoryx_no_thread iceoryx_hoofs::iceoryx_hoofs iceoryx_posh::iceoryx_posh CUDA::cudart Yolo_Tensorrt)  # Link the YoloTensorrt library
+target_include_directories(camera_sub_iceoryx_no_thread PRIVATE
+    /home/robotics4farmers/Dev/Robot/src/example
+    /usr/local/cuda-12.6/targets/aarch64-linux/include
+)
 
 add_executable(camera_fastrtps_pub src/camera_fastrtps_pub.cpp)
-ament_target_dependencies(camera_fastrtps_pub rclcpp OpenCV fixed_size_msgs realsense2 sensor_msgs)
+ament_target_dependencies(camera_fastrtps_pub rclcpp OpenCV msgs fixed_size_msgs realsense2 sensor_msgs)
 target_link_libraries(camera_fastrtps_pub iceoryx_hoofs::iceoryx_hoofs iceoryx_posh::iceoryx_posh ${realsense2_LIBRARY})
 
 add_executable(camera_fastrtps_sub src/camera_fastrtps_sub.cpp)
-ament_target_dependencies(camera_fastrtps_sub rclcpp OpenCV fixed_size_msgs sensor_msgs)
+ament_target_dependencies(camera_fastrtps_sub rclcpp OpenCV msgs fixed_size_msgs sensor_msgs)
 target_link_libraries(camera_fastrtps_sub iceoryx_hoofs::iceoryx_hoofs iceoryx_posh::iceoryx_posh)
-
-# ── CycloneDDS camera publisher ───────────────────────────────────────────────
-add_executable(camera_publisher_cyclone
-  src/camera_publisher_cyclone.cpp
-)
-ament_target_dependencies(camera_publisher_cyclone
-  rclcpp
-  fixed_size_msgs
-  OpenCV
-)
-
-# ── CycloneDDS camera subscriber ──────────────────────────────────────────────
-add_executable(camera_subscriber_cyclone
-  src/camera_subscriber_cyclone.cpp
-)
-ament_target_dependencies(camera_subscriber_cyclone
-  rclcpp
-  fixed_size_msgs
-  OpenCV
-)
-
-# ── install all executables ───────────────────────────────────────────────────
-install(TARGETS
-  camera_publisher_cyclone
-  camera_subscriber_cyclone
-  DESTINATION lib/${PROJECT_NAME}
-)
 
 # ----------------------------
 # GPS hardware plugin (for simulation)
@@ -138,7 +106,7 @@ ament_export_libraries(example)
 # Install targets
 # ----------------------------
 install(TARGETS
-  camera1_pub camera_bridge camera_sub_nav2 camera_sub_ros2_iceoryx camera_sub_iceoryx_nativo camera_fastrtps_pub camera_fastrtps_sub camera_2 velocity_change
+  camera1_pub camera_bridge camera_sub_iceoryx_nativo camera_sub_iceoryx_no_thread camera_fastrtps_pub camera_fastrtps_sub velocity_change
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 

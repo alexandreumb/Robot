@@ -10,7 +10,6 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>rclcpp</depend>
-  <depend>fixed_size_msgs</depend>
   <depend>OpenCV</depend>
   <depend>iceoryx_posh</depend>    
   <depend>iceoryx_hoofs</depend>    
@@ -20,6 +19,7 @@
   <depend>pluginlib</depend>
   <depend>gnss_compass_utils</depend>
   <depend>msgs</depend>
+  <depend>fixed_size_msgs</depend>
   <depend>CUDAToolkit</depend>
   <depend>nlohmann_json</depend>
   

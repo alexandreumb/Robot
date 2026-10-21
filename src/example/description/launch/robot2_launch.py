@@ -68,7 +68,7 @@ def generate_launch_description():
     
     rviz_node = Node( package="rviz2", executable="rviz2", name="rviz2", output="log", arguments=["-d", rviz_config_file], condition=IfCondition(gui), parameters=[{'use_sim_time': use_sim_time}],) 
     
-    joint_state_broadcaster_spawner = Node( package="controller_manager", executable="spawner", arguments=["joint_state_broadcaster", "--controller-manager", "/controller_manager"], parameters=[{'use_sim_time': use_sim_time}],) 
+    joint_state_broadcaster_spawner = Node( package="controller_manager", executable="spawner", arguments=["joint_state_broadcaster", "--controller-manager", "/controller_manager", "--controller-type", "joint_state_broadcaster/JointStateBroadcaster"], parameters=[{'use_sim_time': use_sim_time}],) 
     
     gps_sensor_broadcaster_spawner = Node( package="controller_manager", executable="spawner", arguments=["gps_sensor_broadcaster", "--controller-manager", "/controller_manager", "--controller-type", "gps_sensor_broadcaster/GPSSensorBroadcaster"], parameters=[{'use_sim_time': use_sim_time}], ) 
     
@@ -90,8 +90,8 @@ def generate_launch_description():
         control_node_remapped, 
         robot_state_publisher_node, 
         robot_controller_spawner, 
-        #delay_joint_state_broadcaster, 
-        #delay_gps_sensor_broadcaster, 
+        delay_joint_state_broadcaster, 
+        delay_gps_sensor_broadcaster, 
         #delayed_rviz_after_joint_state_broadcaster, 
         ] 
     

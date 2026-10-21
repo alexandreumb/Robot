@@ -1,4 +1,4 @@
-#include "fixed_size_msgs/msg/image8_mb.hpp"
+#include "msgs/msg/image8_mb.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include <opencv4/opencv2/opencv.hpp>
 #include "sensor_msgs/msg/image.hpp"
@@ -15,13 +15,12 @@
 #include <thread>
 #include <sys/mman.h>
 
-using Image8Mb = fixed_size_msgs::msg::Image8Mb;
+using Image8Mb = msgs::msg::Image8Mb;
 
 #define USE_CLOCK_MONOTONIC 1
 #define PRINT               0
 #define IMAGE8MB            1
-#define REALSENSE           0
-#define USE_RT_SCHEDULING    1
+#define USE_RT_SCHEDULING    0
 #define USE_CPU_AFFINITY     1
 
 static const std::string OUTPUT_DIR = std::string(getenv("HOME")) + "/latency_data/";
@@ -36,19 +35,15 @@ inline int64_t monotonic_now_ns()
     return static_cast<int64_t>(ts.tv_sec) * 1'000'000'000LL + ts.tv_nsec;
 }
 
-#if REALSENSE
-constexpr int      IMG_TYPE    = CV_16UC1;         
-#else
 constexpr int      IMG_TYPE    = CV_8UC3;         // bgr8, 3 bytes per pixel
-#endif
-constexpr int      SUBSCRIBER_CORE = 2;
+constexpr int      SUBSCRIBER_CORE = 4;
 constexpr int      RT_PRIORITY     = 40;
 
 void process_image(const cv::Mat & img) { (void)img; }
 
 std::string make_csv_path()
 {
-    std::string model = "ros2_cyclonedds";
+    std::string model = "ros2_cyclonedds_no";
     system(("mkdir -p " + OUTPUT_DIR + model).c_str());
     time_t now = time(nullptr);
     struct tm * t = localtime(&now);
@@ -142,8 +137,6 @@ int main(int argc, char ** argv)
 
     std::vector<double> full_us_vec;
     std::vector<double> transport_us_vec;
-    full_us_vec.reserve(10000);
-    transport_us_vec.reserve(10000);
 
     double   total_full_us      = 0.0;
     double   total_transport_us = 0.0;
@@ -195,13 +188,13 @@ int main(int argc, char ** argv)
 #if IMAGE8MB
         const double full_us      = static_cast<double>(receive_ns - msg->timestamp)         / 1000.0;
         const double transport_us = static_cast<double>(receive_ns - msg->publish_timestamp) / 1000.0;
+
         transport_us_vec.push_back(transport_us);
         total_transport_us += transport_us;
         min_transport_us    = std::min(min_transport_us, transport_us);
         max_transport_us    = std::max(max_transport_us, transport_us);
 #else
-        const int64_t stamp_ns = static_cast<int64_t>(msg->header.stamp.sec) * 1'000'000'000LL
-                            + static_cast<int64_t>(msg->header.stamp.nanosec);
+        const int64_t stamp_ns = static_cast<int64_t>(msg->timestamp);
         const double full_us      = static_cast<double>(receive_ns - stamp_ns)         / 1000.0;
 #endif
 

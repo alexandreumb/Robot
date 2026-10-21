@@ -1,4 +1,4 @@
-#include "fixed_size_msgs/msg/image8_mb.hpp"
+#include "msgs/msg/image8_mb.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include <opencv4/opencv2/opencv.hpp>
 #include "sensor_msgs/msg/image.hpp"
@@ -11,11 +11,11 @@
 #include <time.h>
 #include <sys/mman.h>
 
-using Image8Mb = fixed_size_msgs::msg::Image8Mb;
+using Image8Mb = msgs::msg::Image8Mb;
 
 #define USE_CLOCK_MONOTONIC 1
 #define REALSENSE           0
-#define USE_RT_SCHEDULING   1
+#define USE_RT_SCHEDULING   0
 #define USE_CPU_AFFINITY    1
 
 std::atomic<bool> stop{false};
@@ -29,7 +29,7 @@ inline int64_t monotonic_now_ns()
 }
 
 constexpr int      RT_PRIORITY = 40;     //needs to be inferior to the prority of the nvidia drivers which is 50
-constexpr int      SUBSCRIBER_CORE = 2;
+constexpr int      SUBSCRIBER_CORE = 4;
 
 constexpr int      CAM_INDEX   = 2;
 constexpr int      IMG_WIDTH   = 1280;
@@ -107,7 +107,7 @@ int main(int argc, char ** argv)
 #else
     auto pub = node->create_publisher<Image8Mb>("/camera/color/image_raw", qos);
 
-    auto image = cv::imread("/home/alexandre/Pictures/images.jpg", cv::IMREAD_COLOR);
+    auto image = cv::imread("/home/robotics4farmers/Dev/Robot/src/images.jpg", cv::IMREAD_COLOR);
     if (image.empty()) {
         RCLCPP_ERROR(node->get_logger(), "Failed to load image");
         return 1;
@@ -147,7 +147,8 @@ int main(int argc, char ** argv)
     */
 
 #endif
-
+    
+rs2::align align_to_color(RS2_STREAM_COLOR);
     double time_dif = 0;
     int ite = 0;
     while (!stop && rclcpp::ok())
@@ -161,7 +162,7 @@ int main(int argc, char ** argv)
             rs2::frameset frames = p.wait_for_frames();
             frames = align_to_color.process(frames);
 
-            rs2::color_frame color = frames.get_color_frame();
+            rs2::video_frame color = frames.get_color_frame();
             rs2::depth_frame depth = frames.get_depth_frame();
 
             auto loaned_msg = pub->borrow_loaned_message();
@@ -205,7 +206,7 @@ int main(int argc, char ** argv)
             rs2::frameset frames = p.wait_for_frames();
             frames = align_to_color.process(frames);
             
-            rs2::color_frame color = frames.get_color_frame();
+            rs2::video_frame color = frames.get_color_frame();
             rs2::depth_frame depth = frames.get_depth_frame();
             
             auto msg = std::make_unique<Image8Mb>();
@@ -272,9 +273,7 @@ int main(int argc, char ** argv)
             msg.timestamp = node->now().nanoseconds();
 #endif
             memcpy(msg.data_color.data(), image.data, IMG_WIDTH * IMG_HEIGHT * PIXEL_BYTES);
-            if (ite > 500)
-                time_dif += (double)((monotonic_now_ns() - msg.timestamp)/1e6);
-            ite+= 1;
+
             msg.image_intrinsics.width        = IMG_WIDTH;
             msg.image_intrinsics.height       = IMG_HEIGHT;
             msg.step_color   = static_cast<uint32_t>(step);

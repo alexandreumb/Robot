@@ -13,7 +13,7 @@
 namespace example
 {
 
-#define SEND_CAN_COMMANDS 0 
+#define SEND_CAN_COMMANDS 0
 #define CAN_AVAILABLE 0
 
 void Robot4FarmersHardware::EncodeControl(const ControlData& data, uint8_t* buffer) {
@@ -152,12 +152,12 @@ void Robot4FarmersHardware::canLoop()
             // Process the CAN frame (frame.can_id, frame.data, frame.can_dlc)
             switch (frame.can_id)
             {
-                case IDMCIFront(Torque): // Front Velocity
+                case IDMCIFront(Velocity): // Front Velocity
                     thread_data_.velocity_front_left = static_cast<double>(static_cast<int16_t>((frame.data[0] << 8) | frame.data[1]))/100;
                     thread_data_.velocity_front_right = static_cast<double>(static_cast<int16_t>((frame.data[2] << 8) | frame.data[3]))/100;
                     break;
 
-                case IDMCIRear(Torque): // Rear Velocity
+                case IDMCIRear(Velocity): // Rear Velocity
                     thread_data_.velocity_rear_left = static_cast<double>(static_cast<int16_t>((frame.data[0] << 8) | frame.data[1]))/100;
                     thread_data_.velocity_rear_right = static_cast<double>(static_cast<int16_t>((frame.data[2] << 8) | frame.data[3]))/100;
                     break;
@@ -251,7 +251,7 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_activate(
     {
         if (joint.joint_name.find("rear") != std::string::npos)
         {
-            joint.state.velocity_rear_left = 0;
+            joint.state.velocity_rear_left = 2;
             joint.state.velocity_rear_right = 0;
             joint.state.velocity_rear_timestamp = 0;
             joint.state.temperature_rear_left = 0;
@@ -269,7 +269,7 @@ hardware_interface::CallbackReturn Robot4FarmersHardware::on_activate(
         }
         else if (joint.joint_name.find("front") != std::string::npos)
         {
-            joint.state.velocity_front_left = 0;
+            joint.state.velocity_front_left = 1.5;
             joint.state.velocity_front_right = 0;
             joint.state.velocity_front_timestamp = 0;
             joint.state.temperature_front_left = 0;
@@ -398,29 +398,36 @@ hardware_interface::return_type Robot4FarmersHardware::read(
             joint.state.temperature_rear_left = data.temperature_rear_left;
             joint.state.temperature_rear_right = data.temperature_rear_right;
             joint.state.temperature_rear_timestamp = data.temperature_rear_timestamp;
-            joint.state.throttle_rear_left = data_.throttle_rear_left;
-            joint.state.throttle_rear_right = data_.throttle_rear_right;
-            joint.state.throttle_rear_timestamp = data_.throttle_rear_timestamp;
+            joint.state.throttle_rear_left = data.throttle_rear_left;
+            joint.state.throttle_rear_right = data.throttle_rear_right;
+            joint.state.throttle_rear_timestamp = data.throttle_rear_timestamp;
+            if (joint.state.throttle_rear_left != 0 || joint.state.velocity_rear_left != 0 || data.temperature_rear_left!= 0) 
+            {
+                RCLCPP_INFO(get_logger(), "Throttle to send: %f", joint.state.throttle_rear_left);
+                RCLCPP_INFO(get_logger(), "velocity to send: %f", joint.state.velocity_rear_left);
+                RCLCPP_INFO(get_logger(), "Temperature to send: %f", joint.state.temperature_rear_left);
+
+            }
         }
         else if (joint.joint_name.find("front") != std::string::npos)
         {                
-            joint.state.velocity_front_left = data_.velocity_front_left;
-            joint.state.velocity_front_right = data_.velocity_front_right;
-            joint.state.velocity_front_timestamp = data_.velocity_front_timestamp;
-            joint.state.temperature_front_left = data_.temperature_front_left;
-            joint.state.temperature_front_right = data_.temperature_front_right;
-            joint.state.temperature_front_timestamp = data_.temperature_front_timestamp;
-            joint.state.throttle_front_left = data_.throttle_front_left;
-            joint.state.throttle_front_right = data_.throttle_front_right;
-            joint.state.throttle_front_timestamp = data_.throttle_front_timestamp;
+            joint.state.velocity_front_left = data.velocity_front_left;
+            joint.state.velocity_front_right = data.velocity_front_right;
+            joint.state.velocity_front_timestamp = data.velocity_front_timestamp;
+            joint.state.temperature_front_left = data.temperature_front_left;
+            joint.state.temperature_front_right = data.temperature_front_right;
+            joint.state.temperature_front_timestamp = data.temperature_front_timestamp;
+            joint.state.throttle_front_left = data.throttle_front_left;
+            joint.state.throttle_front_right = data.throttle_front_right;
+            joint.state.throttle_front_timestamp = data.throttle_front_timestamp;
         }
         else if (joint.joint_name.find("direction") != std::string::npos)
         {
-            joint.state.steering_angle = data_.steering_angle;
-            joint.state.steering_angle_timestamp = data_.steering_angle_timestamp;
-            joint.state.steering_torque_high = data_.steering_torque_high;
-            joint.state.steering_torque_low = data_.steering_torque_low;
-            joint.state.steering_torque_timestamp = data_.steering_torque_timestamp;
+            joint.state.steering_angle = data.steering_angle;
+            joint.state.steering_angle_timestamp = data.steering_angle_timestamp;
+            joint.state.steering_torque_high = data.steering_torque_high;
+            joint.state.steering_torque_low = data.steering_torque_low;
+            joint.state.steering_torque_timestamp = data.steering_torque_timestamp;
         }
     }
 #endif
@@ -570,6 +577,7 @@ std::vector<hardware_interface::StateInterface> Robot4FarmersHardware::export_st
 
     for (auto &joint : joints_)
     {
+        RCLCPP_INFO(get_logger(), "Exported %s.", joint.joint_name.c_str());
         if (joint.joint_name.find("rear") != std::string::npos)
         {
             state_interfaces.emplace_back(

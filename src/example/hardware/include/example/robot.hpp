@@ -146,7 +146,7 @@ namespace example
         // Message IDs MCI
         static constexpr unsigned int Throttle =         0b000'0000;
         static constexpr unsigned int Temperature =      0b000'0001;
-        static constexpr unsigned int Torque =           0b000'0010;
+        static constexpr unsigned int Velocity =         0b000'0010;
         static constexpr unsigned int PidGains =         0b000'0011;
 
         static constexpr unsigned int IDJetson(unsigned int messageID) {

@@ -130,7 +130,6 @@ void GpsHardware::ethernetLoop()
 
     while (running_) 
     {
-
         // ── 1. Receber dados para o buffer do decoder ──────────
         bytes_received = ::read(socket_fd_, an_decoder_pointer(&an_decoder_), an_decoder_size(&an_decoder_));
                 
@@ -470,6 +469,11 @@ hardware_interface::return_type GpsHardware::read(
                 RCLCPP_INFO(get_logger(), "No more waypoints found. Holding position at: north=%.2f east=%.2f down=%.2f", north_, east_, down_);
             }
         }
+    }
+    else 
+    {
+        RCLCPP_INFO_ONCE(get_logger(), "waypoint: north=%.2f east=%.2f down=%.2f", copy.latitude, copy.longitude, copy.height);
+
     }
 #else
 

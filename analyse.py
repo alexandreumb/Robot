@@ -2,8 +2,10 @@
 """
 merge_latency_runs.py
 
-Merges all latency_run_*.csv files in ~/latency_data/ into a single Excel file.
-Each run becomes one column. Rows are frame indices.
+Merges latency CSV data into an Excel file.
+
+Excel has a maximum of 1,048,576 rows per worksheet, so large
+datasets are automatically split across multiple raw-data sheets.
 
 Usage:
     python3 merge_latency_runs.py
@@ -18,72 +20,48 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.chart import LineChart, Reference, BarChart
+from pathlib import Path
 import matplotlib.pyplot as plt
+from openpyxl import Workbook
 
-def load_runs(input_dir, i):
-    """Load all CSV run files, return dict of {run_label: Series of full_us values}"""
 
-    df = pd.read_csv(input_dir)  
-    df = df.drop(columns=["iteration"])  
-    df = df[10000:]
+# Excel maximum worksheet size is 1,048,576 rows.
+# One row is used for the header, so leave 1,048,575 rows for data.
+EXCEL_MAX_ROWS = 1_048_576
+MAX_DATA_ROWS_PER_SHEET = EXCEL_MAX_ROWS - 1
+
+
+def load_runs(input_dir, period):
+    """Load CSV data."""
+
+    df = pd.read_csv(input_dir)
+
+    df = df.rename(columns={'control loop iteration': 'iteration'})
+    df = df.rename(columns={'iteration_difference_ms': 'period_ms'})
+
+    if "iteration" in df.columns:
+        df = df.drop(columns=["iteration"])
+
+    # Remove first 10000 samples
+    if period == 0.01:
+        df = df[10000:310000]
+    else:
+        df = df[1000:31000]
     return df
 
-'''
-def load_runs(input_dir):
-    """
-    Load CSV run files and group them by prefix before '_latency_run_'.
-    Returns dict {group_name: merged Series}
-    """
-    pattern = os.path.join(input_dir, "*_latency_run_*.csv")
-    files = sorted(glob.glob(pattern))
-
-    if not files:
-        raise FileNotFoundError(f"No latency_run_*.csv files found in {input_dir}")
-
-    grouped = {}
-
-    for f in files:
-        filename = os.path.splitext(os.path.basename(f))[0]
-
-        if "_latency_run_" not in filename:
-            print(f"[WARN] Skipping {f} — invalid naming")
-            continue
-
-        # extract group name (prefix before _latency_run_)
-        group_name = filename.split("_latency_run_")[0]
-
-        df = pd.read_csv(f)
-        if "full_us" not in df.columns:
-            print(f"[WARN] Skipping {f} — no 'full_us' column")
-            continue
-
-        series = df["full_us"].dropna().reset_index(drop=True)
-
-        if group_name not in grouped:
-            grouped[group_name] = []
-
-        grouped[group_name].append(series)
-
-        print(f"[INFO] Loaded {filename} → group '{group_name}' ({len(series)} frames)")
-
-    # merge runs per group (concatenate)
-    merged_runs = {}
-    for group_name, series_list in grouped.items():
-        merged = pd.concat(series_list, ignore_index=True)
-        merged_runs[group_name] = merged
-        print(f"[INFO] Merged group '{group_name}': {len(merged)} total frames")
-
-    return merged_runs
-'''
 
 def build_dataframe(runs):
-    """Build combined DataFrame — one column per run, rows are frame indices"""
+    """Build combined DataFrame — one column per run, rows are frame indices."""
+
     df = pd.DataFrame(runs)
     df.index.name = "frame"
+
     return df
 
+
 def remove_outliers(series):
-    """Remove outliers using IQR method"""
+    """Remove outliers using IQR method."""
+
     s = series.dropna()
 
     Q1 = s.quantile(0.25)
@@ -97,85 +75,328 @@ def remove_outliers(series):
 
     return filtered
 
-def add_stats_sheet(wb, runs_df):
-    """Add a summary statistics sheet"""
+def missed_deadlines(runs_df, period):
+    misses = 0
+    print("Period: ", period)
+
+    for i, row in runs_df.iterrows():
+        if row['period_ms'] >= 2*period:
+            misses += 1
+
+    return misses
+
+def add_stats_sheet(wb, runs_df, period):
+    """Add a summary statistics sheet."""
+
     ws = wb.create_sheet("Statistics")
 
-    headers = ["Run", "Frames", "Mean (ms)", "Median (ms)", "P(95)",
-               "Min (ms)", "Max (ms)", "Std Dev (ms)"]
+    headers = [
+        "Run",
+        "Frames",
+        "Mean (ms)",
+        "Median (ms)",
+        "P(95)",
+        "P(99)",
+        "Min (ms)",
+        "Max (ms)",
+        "Std Dev (ms)",
+        "Missed Deadlines"
+    ]
 
-    # header row
+    # Header row
     for col, h in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col, value=h)
-        cell.font = Font(name="Arial", bold=True, color="FFFFFF")
-        cell.fill = PatternFill("solid", fgColor="1F4E79")
-        cell.alignment = Alignment(horizontal="center")
+        cell.font = Font(
+            name="Arial",
+            bold=True,
+            color="FFFFFF"
+        )
+        cell.fill = PatternFill(
+            "solid",
+            fgColor="1F4E79"
+        )
+        cell.alignment = Alignment(
+            horizontal="center"
+        )
 
-    # data rows
-    # runs_df = runs_df.apply(remove_outliers)
+    # Data rows
     for row, run_name in enumerate(runs_df.columns, 2):
+
         s = runs_df[run_name]
-        ws.cell(row=row, column=1, value=run_name).font = Font(name="Arial", bold=True)
-        ws.cell(row=row, column=2, value=len(s))
-        ws.cell(row=row, column=3, value=round(s.mean(), 3))
-        ws.cell(row=row, column=4, value=round(s.median(), 3))
-        ws.cell(row=row, column=5, value=round(s.quantile(0.95), 3))
-        ws.cell(row=row, column=6, value=round(s.min(), 3))
-        ws.cell(row=row, column=7, value=round(s.max(), 3))
-        ws.cell(row=row, column=8, value=round(s.std(), 3))
 
-        # alternate row shading
-        fill_color = "D6E4F0" if row % 2 == 0 else "FFFFFF"
+        ws.cell(
+            row=row,
+            column=1,
+            value=run_name
+        ).font = Font(
+            name="Arial",
+            bold=True
+        )
+
+        ws.cell(
+            row=row,
+            column=2,
+            value=len(s)
+        )
+
+        ws.cell(
+            row=row,
+            column=3,
+            value=round(s.mean(), 6)
+        )
+
+        ws.cell(
+            row=row,
+            column=4,
+            value=round(s.median(), 6)
+        )
+
+        ws.cell(
+            row=row,
+            column=5,
+            value=round(s.quantile(0.95), 6)
+        )
+
+        ws.cell(
+            row=row,
+            column=6,
+            value=round(s.quantile(0.99), 6)
+        )
+
+        ws.cell(
+            row=row,
+            column=7,
+            value=round(s.min(), 6)
+        )
+
+        ws.cell(
+            row=row,
+            column=8,
+            value=round(s.max(), 6)
+        )
+
+        ws.cell(
+            row=row,
+            column=9,
+            value=round(s.std(), 6)
+        )
+
+        ws.cell(
+            row=row,
+            column=10,
+            value=missed_deadlines(runs_df=runs_df, period=period)
+        )
+
+        # Alternate row shading
+        fill_color = (
+            "D6E4F0"
+            if row % 2 == 0
+            else "FFFFFF"
+        )
+
         for col in range(1, len(headers) + 1):
-            c = ws.cell(row=row, column=col)
-            c.fill = PatternFill("solid", fgColor=fill_color)
-            c.font = Font(name="Arial")
-            c.alignment = Alignment(horizontal="center")
 
-    # column widths
-    col_widths = [40, 10, 12, 14, 10, 10, 12]
+            c = ws.cell(
+                row=row,
+                column=col
+            )
+
+            c.fill = PatternFill(
+                "solid",
+                fgColor=fill_color
+            )
+
+            c.font = Font(name="Arial")
+
+            c.alignment = Alignment(
+                horizontal="center"
+            )
+
+    # Column widths
+    col_widths = [
+        40,
+        10,
+        12,
+        14,
+        10,
+        10,
+        12,
+        14
+    ]
+
     for col, width in enumerate(col_widths, 1):
-        ws.column_dimensions[get_column_letter(col)].width = width
+        ws.column_dimensions[
+            get_column_letter(col)
+        ].width = width
 
     return ws
 
 
 def add_raw_sheet(wb, runs_df):
-    """Add raw latency data sheet — one column per run"""
-    ws = wb.create_sheet("Raw Latency (µs)")
+    """
+    Add raw latency data sheets.
 
-    # header
-    ws.cell(row=1, column=1, value="Frame").font = Font(name="Arial", bold=True)
-    ws.cell(row=1, column=1).fill = PatternFill("solid", fgColor="1F4E79")
-    ws.cell(row=1, column=1).font = Font(name="Arial", bold=True, color="FFFFFF")
-    ws.cell(row=1, column=1).alignment = Alignment(horizontal="center")
+    Excel can only contain 1,048,576 rows per worksheet.
+    Since row 1 is the header, each sheet contains at most
+    1,048,575 data rows.
 
-    for col, run_name in enumerate(runs_df.columns, 2):
-        cell = ws.cell(row=1, column=col, value=run_name)
-        cell.font = Font(name="Arial", bold=True, color="FFFFFF")
-        cell.fill = PatternFill("solid", fgColor="1F4E79")
-        cell.alignment = Alignment(horizontal="center")
+    Sheets are named:
+        Raw Latency (µs) 1
+        Raw Latency (µs) 2
+        ...
+    """
 
-    # data rows
-    for row_idx, frame_idx in enumerate(runs_df.index, 2):
-        ws.cell(row=row_idx, column=1, value=frame_idx)
-        for col_idx, run_name in enumerate(runs_df.columns, 2):
-            val = runs_df.loc[frame_idx, run_name]
-            if pd.notna(val):
-                c = ws.cell(row=row_idx, column=col_idx, value=round(val, 2))
-                c.font = Font(name="Arial")
-                c.alignment = Alignment(horizontal="right")
+    total_rows = len(runs_df)
 
-    # column widths
-    ws.column_dimensions["A"].width = 8
-    for col in range(2, len(runs_df.columns) + 2):
-        ws.column_dimensions[get_column_letter(col)].width = 35
+    number_of_sheets = (
+        (total_rows + MAX_DATA_ROWS_PER_SHEET - 1)
+        // MAX_DATA_ROWS_PER_SHEET
+    )
 
-    return ws
+    print(
+        f"[INFO] Raw data contains {total_rows} rows"
+    )
+
+    print(
+        f"[INFO] Splitting raw data across "
+        f"{number_of_sheets} Excel sheet(s)"
+    )
+
+    for sheet_number, start in enumerate(
+        range(
+            0,
+            total_rows,
+            MAX_DATA_ROWS_PER_SHEET
+        ),
+        1
+    ):
+
+        end = min(
+            start + MAX_DATA_ROWS_PER_SHEET,
+            total_rows
+        )
+
+        chunk = runs_df.iloc[start:end]
+
+        if number_of_sheets == 1:
+            sheet_name = "Raw Latency (µs)"
+        else:
+            sheet_name = f"Raw Latency (µs) {sheet_number}"
+
+        print(
+            f"[INFO] Writing {sheet_name}: "
+            f"rows {start} - {end - 1}"
+        )
+
+        ws = wb.create_sheet(sheet_name)
+
+        # Header
+        frame_header = ws.cell(
+            row=1,
+            column=1,
+            value="Frame"
+        )
+
+        frame_header.font = Font(
+            name="Arial",
+            bold=True,
+            color="FFFFFF"
+        )
+
+        frame_header.fill = PatternFill(
+            "solid",
+            fgColor="1F4E79"
+        )
+
+        frame_header.alignment = Alignment(
+            horizontal="center"
+        )
+
+        # Run headers
+        for col, run_name in enumerate(
+            chunk.columns,
+            2
+        ):
+
+            cell = ws.cell(
+                row=1,
+                column=col,
+                value=run_name
+            )
+
+            cell.font = Font(
+                name="Arial",
+                bold=True,
+                color="FFFFFF"
+            )
+
+            cell.fill = PatternFill(
+                "solid",
+                fgColor="1F4E79"
+            )
+
+            cell.alignment = Alignment(
+                horizontal="center"
+            )
+
+        # Data
+        #
+        # Use itertuples instead of repeated .loc access.
+        # This is considerably faster for ~1 million rows.
+        for row_offset, row_data in enumerate(
+            chunk.itertuples(
+                index=True,
+                name=None
+            ),
+            2
+        ):
+
+            frame_idx = row_data[0]
+
+            ws.cell(
+                row=row_offset,
+                column=1,
+                value=frame_idx
+            )
+
+            for col_idx, value in enumerate(
+                row_data[1:],
+                2
+            ):
+
+                if pd.notna(value):
+
+                    cell = ws.cell(
+                        row=row_offset,
+                        column=col_idx,
+                        value=round(float(value), 2)
+                    )
+
+                    cell.font = Font(
+                        name="Arial"
+                    )
+
+                    cell.alignment = Alignment(
+                        horizontal="right"
+                    )
+
+        # Column widths
+        ws.column_dimensions["A"].width = 8
+
+        for col in range(
+            2,
+            len(chunk.columns) + 2
+        ):
+
+            ws.column_dimensions[
+                get_column_letter(col)
+            ].width = 35
+
+    return number_of_sheets
 
 
 def add_chart_sheet(wb, runs_df):
-    """Add histogram charts of latency with 0.2 ms bin width."""
+    """Add histogram charts of latency with 0.05 ms bin width."""
 
     ws = wb.create_sheet("Histogram")
 
@@ -183,7 +404,12 @@ def add_chart_sheet(wb, runs_df):
 
     # Hidden worksheet containing histogram data
     data_ws = wb.create_sheet("Histogram Data")
-    data_ws.cell(row=1, column=1, value="Latency (ms)")
+
+    data_ws.cell(
+        row=1,
+        column=1,
+        value="Latency (ms)"
+    )
 
     # Find global min/max across all runs
     values = runs_df.stack().dropna()
@@ -195,25 +421,44 @@ def add_chart_sheet(wb, runs_df):
     max_value = values.max()
 
     # Align bins to multiples of 0.05
-    bin_start = int(min_value // BIN_SIZE) * BIN_SIZE
-    bin_end = (int(max_value // BIN_SIZE) + 1) * BIN_SIZE
+    bin_start = (
+        int(min_value // BIN_SIZE)
+        * BIN_SIZE
+    )
+
+    bin_end = (
+        int(max_value // BIN_SIZE)
+        + 1
+    ) * BIN_SIZE
 
     # Generate bin edges
     bins = []
+
     current = bin_start
 
     while current <= bin_end:
-        bins.append(round(current, 10))
+
+        bins.append(
+            round(current, 10)
+        )
+
         current += BIN_SIZE
 
     # Bin labels = center of each bin
     bin_labels = [
-        round((bins[i] + bins[i + 1]) / 2, 3)
+        round(
+            (bins[i] + bins[i + 1]) / 2,
+            3
+        )
         for i in range(len(bins) - 1)
     ]
 
     # Write bin labels
-    for row_idx, label in enumerate(bin_labels, 2):
+    for row_idx, label in enumerate(
+        bin_labels,
+        2
+    ):
+
         data_ws.cell(
             row=row_idx,
             column=1,
@@ -221,7 +466,10 @@ def add_chart_sheet(wb, runs_df):
         )
 
     # Create histogram counts for each run
-    for col_idx, run_name in enumerate(runs_df.columns, 2):
+    for col_idx, run_name in enumerate(
+        runs_df.columns,
+        2
+    ):
 
         data_ws.cell(
             row=1,
@@ -229,22 +477,34 @@ def add_chart_sheet(wb, runs_df):
             value=run_name
         )
 
-        series = runs_df[run_name].dropna()
+        series = runs_df[
+            run_name
+        ].dropna()
 
-        # Calculate counts for each bin
         counts = []
 
-        for i in range(len(bins) - 1):
+        for i in range(
+            len(bins) - 1
+        ):
+
             lower = bins[i]
             upper = bins[i + 1]
 
             # Include lower bound, exclude upper bound
-            count = ((series >= lower) & (series < upper)).sum()
+            count = (
+                (series >= lower)
+                & (series < upper)
+            ).sum()
 
-            counts.append(int(count))
+            counts.append(
+                int(count)
+            )
 
-        # Write counts
-        for row_idx, count in enumerate(counts, 2):
+        for row_idx, count in enumerate(
+            counts,
+            2
+        ):
+
             data_ws.cell(
                 row=row_idx,
                 column=col_idx,
@@ -269,7 +529,10 @@ def add_chart_sheet(wb, runs_df):
     max_rows = len(bin_labels) + 1
 
     # Add each run as a separate series
-    for col_idx in range(2, len(runs_df.columns) + 2):
+    for col_idx in range(
+        2,
+        len(runs_df.columns) + 2
+    ):
 
         data_ref = Reference(
             data_ws,
@@ -293,164 +556,474 @@ def add_chart_sheet(wb, runs_df):
 
     chart.set_categories(categories)
 
-    # Make bars touch, like a histogram
+    # Make bars touch
     chart.gapWidth = 0
 
-    ws.add_chart(chart, "A1")
+    ws.add_chart(
+        chart,
+        "A1"
+    )
 
     return ws
 
+
 def add_max_chart_sheet(wb, runs_df):
-    """Add a line chart of latency over frames, excluding outliers."""
+    """Add separate raw line charts for each metric without binning."""
 
-    ws = wb.create_sheet("Max Chart")
+    metric_names = []
 
-    # Remove outliers
-    # chart_df = runs_df.apply(remove_outliers)
-    chart_df = runs_df
-    # Downsample ONLY for the chart
-    # Change 100 to whatever gives the desired visual density
-    BIN_SIZE = 50
+    for metric in ["execution_ms", "period_ms"]:
+        if metric in runs_df.columns:
+            metric_names.append(metric)
 
-    max_df = chart_df.groupby(chart_df.index // BIN_SIZE).max()
-    # Helper sheet containing only chart data
-    data_ws = wb.create_sheet("Chart Max Data")
+    if not metric_names:
+        metric_names = [
+            col for col in runs_df.columns
+            if col not in ["iteration", "frame"]
+        ]
 
-    data_ws.cell(row=1, column=1, value="Frame")
+    for metric_name in metric_names:
 
-    for col_idx, run_name in enumerate(max_df.columns, 2):
-        data_ws.cell(row=1, column=col_idx, value=run_name)
+        ws = wb.create_sheet(f"{metric_name} Chart")
 
-    for row_idx, frame_idx in enumerate(max_df.index, 2):
-        data_ws.cell(row=row_idx, column=1, value=frame_idx)
+        data_ws = wb.create_sheet(f"{metric_name} Data")
 
-        for col_idx, run_name in enumerate(max_df.columns, 2):
-            value = max_df.loc[frame_idx, run_name]
-
-            if pd.notna(value):
-                data_ws.cell(
-                    row=row_idx,
-                    column=col_idx,
-                    value=float(value)
-                )
-
-    data_ws.sheet_state = "hidden"
-
-    # Chart
-    chart = LineChart()
-    chart.title = "Latency per Frame"
-    chart.style = 10
-    chart.y_axis.title = "Latency (ms)"
-    chart.x_axis.title = "Frame"
-    chart.width = 30
-    chart.height = 15
-
-    max_frames = len(max_df)
-
-    for col_idx in range(2, len(max_df.columns) + 2):
-        data_ref = Reference(
-            data_ws,
-            min_col=col_idx,
-            min_row=1,
-            max_row=max_frames + 1
+        data_ws.cell(
+            row=1,
+            column=1,
+            value="Frame"
         )
 
+        data_ws.cell(
+            row=1,
+            column=2,
+            value=metric_name
+        )
+
+        series = runs_df[metric_name].dropna()
+
+        for row_idx, (frame_idx, value) in enumerate(
+            series.items(),
+            2
+        ):
+            data_ws.cell(
+                row=row_idx,
+                column=1,
+                value=frame_idx
+            )
+            data_ws.cell(
+                row=row_idx,
+                column=2,
+                value=float(value)
+            )
+
+        data_ws.sheet_state = "hidden"
+
+        chart = LineChart()
+
+        chart.title = f"{metric_name} per Frame"
+        chart.style = 10
+
+        chart.y_axis.title = metric_name
+        chart.x_axis.title = "Frame"
+
+        chart.width = 30
+        chart.height = 15
+
+        data_ref = Reference(
+            data_ws,
+            min_col=2,
+            min_row=1,
+            max_row=1 + len(series)
+        )
         chart.add_data(
             data_ref,
             titles_from_data=True
         )
 
-    categories = Reference(
-        data_ws,
-        min_col=1,
-        min_row=2,
-        max_row=max_frames + 1
+        categories = Reference(
+            data_ws,
+            min_col=1,
+            min_row=2,
+            max_row=1 + len(series)
+        )
+        chart.set_categories(categories)
+
+        ws.add_chart(
+            chart,
+            "A1"
+        )
+
+    return wb
+
+
+def get_files(path):
+    """Return all files in a directory."""
+
+    return [
+        f
+        for f in path.iterdir()
+        if not f.is_dir()
+    ]
+
+
+def get_folders(path):
+    """Return all subdirectories."""
+
+    return [
+        p
+        for p in path.iterdir()
+        if p.is_dir()
+    ]
+
+
+def add_percentage_to_existing_stats(
+    output,
+    runs_df
+):
+    """
+    Open an existing Excel file and add/update the
+    '% Within ±0.1 ms' column in the Statistics sheet.
+
+    Does not rewrite the raw data or other sheets.
+    """
+
+    wb = load_workbook(output)
+
+    if "Statistics" not in wb.sheetnames:
+
+        print(
+            f"[WARN] No Statistics sheet found "
+            f"in {output}"
+        )
+
+        wb.close()
+        return
+
+    ws = wb["Statistics"]
+
+    # Find the next empty column
+    percentage_col = ws.max_column + 1
+
+    # Add header
+    header = ws.cell(
+        row=1,
+        column=percentage_col,
+        value="% Within ±0.1 ms"
     )
 
-    chart.set_categories(categories)
+    header.font = Font(
+        name="Arial",
+        bold=True,
+        color="FFFFFF"
+    )
 
-    ws.add_chart(chart, "A1")
+    header.fill = PatternFill(
+        "solid",
+        fgColor="1F4E79"
+    )
 
-    return ws
+    header.alignment = Alignment(
+        horizontal="center"
+    )
 
-def main():
+    # Calculate percentage for each run
+    for row, run_name in enumerate(
+        runs_df.columns,
+        2
+    ):
+
+        s = runs_df[
+            run_name
+        ].dropna()
+
+        if len(s) == 0:
+
+            percentage = 0
+
+        else:
+
+            mean = s.mean()
+
+            within_range = (
+                (s >= mean - 0.1)
+                & (s <= mean + 0.1)
+            )
+
+            percentage = (
+                within_range.mean()
+                * 100
+            )
+
+        cell = ws.cell(
+            row=row,
+            column=percentage_col,
+            value=round(
+                percentage,
+                2
+            )
+        )
+
+        cell.font = Font(
+            name="Arial"
+        )
+
+        cell.alignment = Alignment(
+            horizontal="center"
+        )
+
+        # Match existing alternating row colors
+        fill_color = (
+            "D6E4F0"
+            if row % 2 == 0
+            else "FFFFFF"
+        )
+
+        cell.fill = PatternFill(
+            "solid",
+            fgColor=fill_color
+        )
+
+    # Set column width
+    ws.column_dimensions[
+        get_column_letter(
+            percentage_col
+        )
+    ].width = 20
+
+    wb.save(output)
+    wb.close()
+
+    print(
+        f"[INFO] Updated Statistics sheet "
+        f"in {output}"
+    )
+
+
+def iter_target_files(path):
+    """Yield files to process for a given root directory."""
+
+    path = Path(path)
+
+    if path.is_file():
+        return [path]
+
+    files = sorted(
+        get_files(path),
+        key=lambda p: p.name
+    )
+
+    if files:
+        return files
+
+    collected = []
+
+    for child in sorted(
+        get_folders(path),
+        key=lambda p: p.name
+    ):
+        collected.extend(
+            iter_target_files(child)
+        )
+
+    return collected
+
+
+def main(folder=None, edit=False):
+
     all_runs = []
-    inputs = ["/home/robotics4farmers/Dev/Robot/analyse_1000/perf_counters_sched.csv", 
-            "/home/robotics4farmers/Dev/Robot/analyse_1000/perf_counters.csv",
-            "/home/robotics4farmers/Dev/Robot/analyse_100/perf_counters_sched.csv",
-            "/home/robotics4farmers/Dev/Robot/analyse_100/perf_counters.csv"]
 
-    outputs = ["/home/robotics4farmers/Dev/Robot/analyse_1000/latency_results_sched.xlsx", 
-            "/home/robotics4farmers/Dev/Robot/analyse_1000/latency_results.xlsx",
-            "/home/robotics4farmers/Dev/Robot/analyse_100/latency_results_sched.xlsx",
-            "/home/robotics4farmers/Dev/Robot/analyse_100/latency_results.xlsx"]
+    default_path = Path(
+        "/home/robotics4farmers/Dev/Robot/Control_loop"
+    )
 
-    for i in range(len(inputs)):
-        print(f"[INFO] Loading runs from {inputs[i]}")
-        runs = load_runs(inputs[i], i)
-        all_runs.append(runs)
+    path = Path(folder) if folder is not None else default_path
 
-        runs_df = build_dataframe(runs)
-        print(f"[INFO] Combined {len(runs)} runs, {len(runs_df)} max frames")
+    files = iter_target_files(path)
 
-        # write to Excel via pandas first
-        runs_df.to_excel(outputs[i], sheet_name="Analysis", index=True)
+    if len(files) == 0:
+        print(f"[WARN] No CSV files found in {path}")
+        return
 
-        # reopen with openpyxl for formatting
-        wb = load_workbook(outputs[i])
+    for file in files:
 
-        # remove default sheet — we'll recreate it formatted
-        if "Analysis" in wb.sheetnames:
-            del wb["Analysis"]
+        if edit:
 
-        # add sheets in order: Statistics first, then Raw, then Chart
-        add_stats_sheet(wb, runs_df)
-        add_raw_sheet(wb, runs_df)
-        add_chart_sheet(wb, runs_df)
-        add_max_chart_sheet(wb, runs_df)
+            if "xlsx" in str(file):
 
-        wb.save(outputs[i])
-        print(f"[INFO] Saved {outputs[i]}")
-        print(f"[INFO] Sheets: Statistics, Raw Latency (µs), Chart")
+                input_file = (
+                    str(file)
+                    .split("_results")[0]
+                    + ".csv"
+                )
 
-    fig_1 = plt.figure(figsize=(10, 7))
-    ax_1 = fig_1.add_axes([0, 0, 1, 1])
+                print(
+                    input_file
+                )
 
-    fig_2 = plt.figure(figsize=(10, 7))
-    ax_2 = fig_2.add_axes([0, 0, 1, 1])
+                runs = load_runs(
+                    input_file,
+                    0.01
+                )
 
-    boxplot_data = []
-    boxplot_transport = []
+                all_runs.append(
+                    runs
+                )
 
-    for i, runs in enumerate(all_runs):
-        boxplot_data.append(runs["execution_ms"])
-        boxplot_transport.append(runs["iteration_difference_ms"])
+                runs_df = build_dataframe(
+                    runs
+                )
 
-    bp_1 = ax_1.boxplot(boxplot_data)
-    bp_2 = ax_2.boxplot(boxplot_transport)
+                add_percentage_to_existing_stats(
+                    file,
+                    runs_df
+                )
 
-    ax_1.set_xticklabels([
-        "1000-Schedutil",
-        "1000-Performance",
-        "100-Schedutil",
-        "100-Performance"
-    ])
+        else:
+            if "xlsx" in str(file):
+                continue
 
-    ax_2.set_xticklabels([
-        "1000-Schedutil",
-        "1000-Performance",
-        "100-Schedutil",
-        "100-Performance"
-    ])
+            if "100/" in str(file):
+                period = 0.1
+            else:
+                period = 0.01
 
-    ax_1.set_ylabel("Latency (ms)")
-    ax_1.set_title("Full Latency Comparison")
+            sp = str(file).split(
+                '.'
+            )
 
-    ax_2.set_ylabel("Latency (ms)")
-    ax_2.set_title("Transport Latency Comparison")
+            output = (
+                sp[0]
+                + "_results.xlsx"
+            )
 
-    fig_1.savefig("/home/robotics4farmers/Pictures/thesis/boxplot_full.png", dpi=300, bbox_inches="tight")
-    fig_2.savefig("/home/robotics4farmers/Pictures/thesis/boxplot_transport.png", dpi=300, bbox_inches="tight")
+            print(output)
+
+            print(
+                f"[INFO] Loading runs "
+                f"from {str(file)}"
+            )
+
+            runs = load_runs(
+                file,
+                period
+            )
+
+            all_runs.append(
+                runs
+            )
+
+            runs_df = build_dataframe(
+                runs
+            )
+
+            print(
+                f"[INFO] Combined "
+                f"{len(runs)} runs, "
+                f"{len(runs_df)} max frames"
+            )
+
+            # -------------------------------------------------
+            # Create workbook directly.
+            #
+            # Previously this used:
+            #
+            # runs_df.to_excel(...)
+            #
+            # That fails when runs_df has more than
+            # 1,048,576 rows.
+            #
+            # We don't need pandas to write the initial sheet
+            # because all sheets are created with openpyxl below.
+            # -------------------------------------------------
+
+            wb = load_workbook(
+                output
+            ) if os.path.exists(
+                output
+            ) else None
+
+            wb = Workbook()
+
+            # Remove the default worksheet
+            default_ws = wb.active
+            wb.remove(default_ws)
+
+            # -------------------------------------------------
+            # Add sheets in order:
+            #
+            # Statistics
+            # Raw Latency (µs) 1
+            # Raw Latency (µs) 2
+            # ...
+            # Histogram
+            # Histogram Data
+            # Execution_ms Chart
+            # Execution_ms Data
+            # Period_ms Chart
+            # Period_ms Data
+            # -------------------------------------------------
+
+            add_stats_sheet(
+                wb,
+                runs_df,
+                period * 100
+            )
+
+            add_chart_sheet(
+                wb,
+                runs_df
+            )
+
+            add_max_chart_sheet(
+                wb,
+                runs_df
+            )
+
+            wb.save(
+                output
+            )
+
+            wb.close()
+
+            print(
+                f"[INFO] Saved {output}"
+            )
+
+            print(
+                f"[INFO] Sheets: "
+                f"Statistics, "
+                f"Histogram, "
+                f"Execution_ms Chart, "
+                f"Period_ms Chart"
+            )
+
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description=(
+            "Process latency CSV files from the default Control_loop "
+            "directory or a specific folder."
+        )
+    )
+    parser.add_argument(
+        "folder",
+        nargs="?",
+        type=Path,
+        default=None,
+        help=(
+            "Optional folder to process instead of the default "
+            "Control_loop tree."
+        )
+    )
+    parser.add_argument(
+        "--edit",
+        action="store_true",
+        help=(
+            "Update existing Excel statistics sheets instead of creating "
+            "new result files."
+        )
+    )
+    args = parser.parse_args()
+
+    main(folder=args.folder, edit=args.edit)

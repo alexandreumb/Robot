@@ -295,6 +295,9 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
                 
                 new_image_available = false;
 
+                read_index = swap ? 1 : 0;
+                swap = !swap;
+
                 current_times = std::move(*latest_times);
                 latest_times.reset();
             }
@@ -308,12 +311,11 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
             auto after = monotonic_now_ns();
             auto process_duration = after - before;
 #if SAVE_CSV
-            TimesToAnalyze latest_times{current_times.full_ms,
-                    current_times.transport_ms,
-                    static_cast<double>(process_duration) / 1e6,
-                    static_cast<double>(transfer_duration) / 1e6};
 
-            times.push_back(latest_times);
+            current_times.process_time_ms = static_cast<double>(process_duration) / 1e6;
+            current_times.transfer_thread_ms = static_cast<double>(transfer_duration) / 1e6;
+
+            times.push_back(current_times);
             object_identified.push_back(objects.size());
 #endif
             if (objects.size() > 0)
@@ -354,8 +356,6 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
             //RCLCPP_INFO(node->get_logger(), "Publishing image time: %llu.", (node->now().nanoseconds() - obj_msg.header.stamp.sec * 1'000'000'000LL - obj_msg.header.stamp.nanosec)%1'000'000'000LL);
             
             pub->publish(obj_msg);
-
-            swap = !swap;
         }
     });
 
@@ -435,39 +435,16 @@ auto signalTermGuard = iox::posix::registerSignalHandler(iox::posix::Signal::TER
                     
                     {
                         std::unique_lock<std::mutex> lock(write_mutex);
-                        latest_times = TimesToAnalyze{
-                            full_ms,
-                            transport_ms,
-                            0,
-                            0
-                        };
-
-                        if (!new_image_available) {
-                            new_image_available = true;
-                        }
-
-                        writer_index = 1;
-                        if (swap) {
-                            memcpy(frames[writer_index].color.data, msg->data_color.data(), msg->image_intrinsics.width * msg->image_intrinsics.height * PIXEL_BYTES_COLOR);
-                            memcpy(frames[writer_index].depth.data, msg->data_depth.data(), msg->image_intrinsics.width * msg->image_intrinsics.height * PIXEL_BYTES_DEPTH);
-                            frames[writer_index].intrinsics = img_intrinsics;
-                            frames[writer_index].timestamp = msg->timestamp;
-                            frames[writer_index].transfer_time = monotonic_now_ns();
-                            std::swap(frames[0].color, frames[1].color);
-                            std::swap(frames[0].depth, frames[1].depth);
-
-                            std::swap(frames[0].intrinsics, frames[1].intrinsics);
-                            std::swap(frames[0].timestamp, frames[1].timestamp);
-                            std::swap(frames[0].transfer_time, frames[1].transfer_time);
-
-                        }
-                        else {
-                            memcpy(frames[writer_index].color.data, msg->data_color.data(), msg->image_intrinsics.width * msg->image_intrinsics.height * PIXEL_BYTES_COLOR);
-                            memcpy(frames[writer_index].depth.data, msg->data_depth.data(), msg->image_intrinsics.width * msg->image_intrinsics.height * PIXEL_BYTES_DEPTH);
-                            frames[writer_index].intrinsics = img_intrinsics;
-                            frames[writer_index].timestamp = msg->timestamp;
-                            frames[writer_index].transfer_time = monotonic_now_ns();
-                        }
+                        
+                        new_image_available = true;
+                        writer_index = swap ? 1 : 0;
+                        
+                        latest_times = TimesToAnalyze{full_ms, transport_ms, 0, 0 };
+                        memcpy(frames[writer_index].color.data, msg->data_color.data(), msg->image_intrinsics.width * msg->image_intrinsics.height * PIXEL_BYTES_COLOR);
+                        memcpy(frames[writer_index].depth.data, msg->data_depth.data(), msg->image_intrinsics.width * msg->image_intrinsics.height * PIXEL_BYTES_DEPTH);
+                        frames[writer_index].intrinsics = img_intrinsics;
+                        frames[writer_index].timestamp = msg->timestamp;
+                        frames[writer_index].transfer_time = receive_ns;
 
                     }
                     frame_cv.notify_one();

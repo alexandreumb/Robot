@@ -17,8 +17,8 @@ using Image8Mb = msgs::msg::Image8Mb;
 // When USE_CLOCK_MONOTONIC = 1 in the subscriber, set it to 1 here too.
 // Both sides must use the same clock or diffs will be meaningless.
 #define USE_CLOCK_MONOTONIC 1
-#define REALSENSE           1
-#define USE_RT_SCHEDULING   1
+#define REALSENSE           0
+#define USE_RT_SCHEDULING   0
 #define USE_CPU_AFFINITY    1
 
 static constexpr char IOX_SERVICE[]  = "msgs/msg/Image8Mb";
@@ -43,9 +43,9 @@ constexpr int      RT_PRIORITY = 40;     //needs to be inferior to the prority o
 constexpr int      SUBSCRIBER_CORE = 4;
 
 constexpr int      CAM_INDEX   = 2;
-constexpr int      IMG_WIDTH   = 565;
-constexpr int      IMG_HEIGHT  = 489;
-constexpr int      WARMUP_CHUNKS = 8; // >= your mempool count for this chunk size
+constexpr int      IMG_WIDTH   = 1280;
+constexpr int      IMG_HEIGHT  = 720;
+constexpr int      WARMUP_CHUNKS = 2; // >= your mempool count for this chunk size
 constexpr int      IMG_TYPE_DEPTH    = CV_16UC1;      
 constexpr int      IMG_TYPE_COLOR    = CV_8UC3;         // bgr8, 3 bytes per pixel
 constexpr size_t   PIXEL_BYTES = 3;
@@ -108,7 +108,7 @@ int main(int argc, char ** argv)
 
 #else
 
-    auto image = cv::imread("/home/robotics4farmers/Pictures/Screenshots/r4f_icon.png", cv::IMREAD_COLOR);
+    auto image = cv::imread("/home/robotics4farmers/Dev/Robot/src/images.jpg", cv::IMREAD_COLOR);
 
     // ── camera init ──────────────────────────────────────────────────────────
     /*
@@ -167,10 +167,9 @@ int main(int argc, char ** argv)
 
 #if USE_CLOCK_MONOTONIC
                 auto timestamp = monotonic_now_ns();
-                msg->header.stamp.sec = timestamp / 1'000'000'000LL;
-                msg->header.stamp.nanosec = timestamp % 1'000'000'000LL;
+                msg->timestamp = timestamp;
 #else
-                msg->header.stamp    = node->now();
+                msg->timestamp = node->now().nanoseconds();
 #endif                
 
 #if REALSENSE

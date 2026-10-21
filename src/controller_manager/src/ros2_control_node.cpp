@@ -20,12 +20,14 @@
 #include <stdlib.h>
 //#include <gpiod.h>
 #include <fstream>
+#include <mutex>
+#include <condition_variable>
 
 #include "controller_manager/controller_manager.hpp" 
 #include "controller_manager/mmio_gpio.hpp"
 #include "rclcpp/rclcpp.hpp" 
 #include "realtime_tools/realtime_helpers.hpp" 
-#include "controller_manager/memory.hpp"
+//#include "controller_manager/memory.hpp"
 
 using namespace std::chrono_literals; 
 namespace { 
@@ -35,6 +37,7 @@ namespace {
   void sigint_handler(int) 
   { 
     stop_loop = true; 
+    rclcpp::shutdown();
   } 
 } // namespace 
 
@@ -43,8 +46,19 @@ struct CounterSample
     long long cycles;
     long long instructions;
     long long misses;
-    double execution_us;
+    double execution_ms;
 };
+
+struct DifferenceSample
+{
+    double execution_ms;
+    double period_ms;
+    int iteration;
+};
+
+  DifferenceSample sample;
+  std::mutex sample_mutex;
+  std::condition_variable sample_cv;
 
 int main(int argc, char **argv) { 
   rclcpp::init(argc, argv); // Register Ctrl+C handler 
@@ -54,7 +68,6 @@ int main(int argc, char **argv) {
   std::string manager_node_name = "controller_manager"; 
   auto cm = std::make_shared<controller_manager::ControllerManager>(executor, manager_node_name); 
   const bool use_sim_time = cm->get_parameter_or("use_sim_time", false); 
-  
   const int cpu_affinity = cm->get_parameter_or<int>("cpu_affinity", -1); 
   if (cpu_affinity >= 0) { 
     const auto affinity_result = realtime_tools::set_current_thread_affinity(cpu_affinity); 
@@ -80,17 +93,65 @@ int main(int argc, char **argv) {
   
   const int thread_priority = cm->get_parameter_or<int>("thread_priority", kSchedPriority); 
   RCLCPP_INFO(cm->get_logger(), "Spawning %s RT thread with scheduler priority: %d", cm->get_name(), thread_priority); 
-  const double target_ms = 10.0; // 50 Hz 
 
-std::thread cm_thread([cm, thread_priority, use_sim_time, target_ms, cpu_affinity]() 
+std::thread saved_thread([cm, &sample, &sample_mutex, &sample_cv]() {
+    std::vector<DifferenceSample> difference_samples;
+    difference_samples.reserve(1000000);
+    DifferenceSample difference;
+
+    const auto affinity_result = realtime_tools::set_current_thread_affinity(10);
+
+    while (rclcpp::ok() && !stop_loop) {
+        {
+            std::unique_lock<std::mutex> lock(sample_mutex);
+            sample_cv.wait(lock, [&sample] { return sample.iteration > 0 || stop_loop; });
+
+            if (stop_loop) {
+                break;
+            }
+            if (sample.iteration == 1000000) {
+                stop_loop = true;
+            }
+
+            difference = sample;
+            sample.iteration = 0; // Reset iteration to indicate the sample has been processed}
+        }
+        difference_samples.push_back(difference);
+    }
+    
+    time_t now_t = time(nullptr);
+    struct tm * t = localtime(&now_t);
+    std::ostringstream ss;
+    ss << "Control_loop"
+    << "/times_"
+    << std::setfill('0')
+    << (t->tm_year + 1900) << "-"
+    << std::setw(2) << (t->tm_mon + 1) << "-"
+    << std::setw(2) << t->tm_mday << "_"
+    << std::setw(2) << t->tm_hour << "-"
+    << std::setw(2) << t->tm_min  << "-"
+    << std::setw(2) << t->tm_sec
+    << ".csv";
+
+    std::ofstream file(ss.str());    
+    file << "execution_ms,period_ms,iteration\n";
+    for (const auto& spl : difference_samples) {
+        file << spl.execution_ms << ","
+             << spl.period_ms << ","
+             << spl.iteration << "\n";
+    }
+    file.close();
+});
+
+std::thread cm_thread([cm, thread_priority, use_sim_time, cpu_affinity, &sample, &sample_mutex, &sample_cv]() 
 {      
     int iteration = 0;  // Add this back for tracking
-    std::vector<CounterSample> samples;
-    std::vector<double> diffs_;
+    int missed = 0;
+    //std::vector<CounterSample> samples;
 
-    PerformanceCounters counters;
-    //MmioGpio gpio;
-    //gpio.configure_pactl();
+    //PerformanceCounters counters;
+    MmioGpio gpio;
+    gpio.configure_pactl();
     
     // Set CPU affinity FIRST (before RT scheduling)
     if (cpu_affinity >= 0) {
@@ -182,12 +243,8 @@ std::thread cm_thread([cm, thread_priority, use_sim_time, target_ms, cpu_affinit
 
         iteration++;
 
-        if (expirations > 1) {
-            RCLCPP_WARN(
-                cm->get_logger(),
-                "Missed %llu deadline(s) at iteration %zu",
-                expirations - 1,
-                iteration);
+        if (expirations > 1 && iteration > 10000) {
+          missed += 1;
         }
 
         // Duration calculated from steady_clock
@@ -203,75 +260,61 @@ std::thread cm_thread([cm, thread_priority, use_sim_time, target_ms, cpu_affinit
         // ROS time comes from the ROS clock
         rclcpp::Time ros_time(current_ns, RCL_STEADY_TIME);
         
-        counters.start();
+        //counters.start();
+        gpio.set(true);
         cm->read(ros_time, dt);
         cm->update(ros_time, dt);
         cm->write(ros_time, dt);
-        counters.stop();
+        gpio.set(false);
+        //counters.stop();
 
         auto after = std::chrono::steady_clock::now();
 
-        double execution_us =
+        double execution_ms =
             std::chrono::duration<double, std::milli>(
                 after - current_time).count();
 
-        samples.push_back({
-            counters.read_counter(0),
-            counters.read_counter(1),
-            counters.read_counter(2),
-            execution_us
-        });
+        //samples.push_back({
+        //    counters.read_counter(0),
+        //    counters.read_counter(1),
+        //    counters.read_counter(2),
+        //    execution_ms
+        //});
+        {
+            std::lock_guard<std::mutex> lock(sample_mutex);
+            sample.execution_ms = execution_ms;
+            sample.period_ms = measured_period;
+            sample.iteration = iteration;
+        }
+        sample_cv.notify_one();
 
-        diffs_.push_back(execution_us);
     }
+    gpio.set(false); 
     close(tfd);
      
-    RCLCPP_WARN(
-        cm->get_logger(),
-        "Control loop average time %6f ms",
-        ([&]() {
-            double sum = 0.0;
-            for (const auto& d : diffs_)
-                sum += d;
-            return (sum/iteration);
-        })()
-    );
-    RCLCPP_INFO(cm->get_logger(), "Control loop completed %u iterations", iteration);
+    RCLCPP_WARN(cm->get_logger(), "Control loop completed %u iterations", iteration);
+    RCLCPP_WARN(cm->get_logger(), "Control loop completed %u expirations", missed);
 
-    /*
-    std::ofstream file("diffs.csv");
+    //std::ofstream file("perf_counters.csv");
 
-    if (!file.is_open()) {
-        RCLCPP_ERROR(cm->get_logger(), "Failed to open diffs.csv");
-    } else {
-        file << "sample,time_s\n";  // Header
+    //file << "iteration,cycles,instructions,cache_misses,execution_ms\n";
 
-        for (size_t i = 0; i < diffs_.size(); ++i) {
-            file << i << "," << diffs_[i] << "\n";
-        }
-    }
-    file.close();
-    */
-
-    std::ofstream file("perf_counters.csv");
-
-    file << "iteration,cycles,instructions,cache_misses,execution_us\n";
-
-    for (size_t i = 0; i < samples.size(); ++i)
-    {
-        file << i << ","
-            << samples[i].cycles << ","
-            << samples[i].instructions << ","
-            << samples[i].misses << ","
-            << samples[i].execution_us << "\n";
-    }
-    file.close();
-
+    //for (size_t i = 0; i < samples.size(); ++i)
+    //{
+    //    file << i << ","
+    //        << samples[i].cycles << ","
+    //        << samples[i].instructions << ","
+    //        << samples[i].misses << ","
+    //        << samples[i].execution_ms << "\n";
+    //}
+    //file.close();
 });
 
-  executor->add_node(cm); 
-  executor->spin(); 
+  executor->add_node(cm);
+  executor->spin();
+  sample_cv.notify_all(); // Notify the saved_thread to exit
   cm_thread.join(); 
+  saved_thread.join();
   rclcpp::shutdown(); 
   return 0; 
 }

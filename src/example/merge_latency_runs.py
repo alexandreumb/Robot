@@ -20,26 +20,16 @@ from openpyxl.utils import get_column_letter
 from openpyxl.chart import LineChart, Reference
 import matplotlib.pyplot as plt
 
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Merge latency CSV runs into Excel")
-    parser.add_argument("--input",  default=os.path.expanduser("~/latency_data/native_iceoryx/"),
-                        help="Directory containing latency_run_*.csv files")
-    parser.add_argument("--output", default=os.path.expanduser("~/latency_data/native_iceoryx/latency_results.xlsx"),
-                        help="Output Excel file path")
-    return parser.parse_args()
-
-
 def load_runs(input_dir, i):
     """Load all CSV run files, return dict of {run_label: Series of full_us values}"""
     pattern = os.path.join(input_dir, "*latency_run_*.csv")
     files = sorted(glob.glob(pattern))
 
     if not files:
-        raise FileNotFoundError(f"No latency_run_*.csv files found in {input_dir}")
+        print(f"No latency_run_*.csv files found in {input_dir}")
 
     print(i)
-    if i != 3:
+    if i != 4:
         runs = {
             "full_us": pd.Series(dtype=float),
             "transport_us": pd.Series(dtype=float)
@@ -222,7 +212,7 @@ def add_raw_sheet(wb, runs_df):
     return ws
 
 
-def add_max_chart_sheet(wb, runs_df):
+def add_chart_sheet(wb, runs_df):
     """Add a line chart of latency over frames, excluding outliers."""
 
     ws = wb.create_sheet("Median Chart")
@@ -296,7 +286,7 @@ def add_max_chart_sheet(wb, runs_df):
 
     return ws
 
-def add_chart_sheet(wb, runs_df):
+def add_max_chart_sheet(wb, runs_df):
     """Add a line chart of latency over frames, excluding outliers."""
 
     ws = wb.create_sheet("Max Chart")
@@ -370,10 +360,19 @@ def add_chart_sheet(wb, runs_df):
     return ws
 
 def main():
-    args = parse_args()
     all_runs = []
-    inputs = ["/home/alexandre/latency_data/ros2_iceoryx/", "/home/alexandre/latency_data/ros2_cyclonedds/", "/home/alexandre/latency_data/ros2_fastrtps/", "/home/alexandre/latency_data/native_iceoryx/"]
-    outputs = ["/home/alexandre/latency_data/ros2_iceoryx/latency_results.xlsx", "/home/alexandre/latency_data/ros2_cyclonedds/latency_results.xlsx", "/home/alexandre/latency_data/ros2_fastrtps/latency_results.xlsx", "/home/alexandre/latency_data/native_iceoryx/latency_results.xlsx"]
+    inputs = ["/home/robotics4farmers/latency_data/ros2_iceoryx/", 
+            "/home/robotics4farmers/latency_data/ros2_cyclonedds_no/", 
+            "/home/robotics4farmers/latency_data/ros2_cyclonedds_shared_memory/", 
+            "/home/robotics4farmers/latency_data/ros2_fastrtps/", 
+            "/home/robotics4farmers/latency_data/native_iceoryx/"]
+
+    outputs = ["/home/robotics4farmers/latency_data/ros2_iceoryx/latency_results.xlsx", 
+            "/home/robotics4farmers/latency_data/ros2_cyclonedds_no/latency_results.xlsx", 
+            "/home/robotics4farmers/latency_data/ros2_cyclonedds_shared_memory/latency_results.xlsx", 
+            "/home/robotics4farmers/latency_data/ros2_fastrtps/latency_results.xlsx", 
+            "/home/robotics4farmers/latency_data/native_iceoryx/latency_results.xlsx"]
+
     for i in range(len(inputs)):
         print(f"[INFO] Loading runs from {inputs[i]}")
         runs = load_runs(inputs[i], i)
@@ -416,7 +415,7 @@ def main():
     boxplot_transport = []
 
     for i, runs in enumerate(all_runs):
-        if i != 3:
+        if i != 4:
             boxplot_data.append(runs["full_us"])
             boxplot_transport.append(runs["transport_us"])
         else:
@@ -429,6 +428,7 @@ def main():
     ax_1.set_xticklabels([
         "ROS 2 Iceoryx",
         "ROS 2 CycloneDDS",
+        "ROS 2 CycloneDDS (Shared Memory)",
         "ROS 2 FastDDS",
         "Native Iceoryx"
     ])
@@ -436,6 +436,7 @@ def main():
     ax_2.set_xticklabels([
         "ROS 2 Iceoryx",
         "ROS 2 CycloneDDS",
+        "ROS 2 CycloneDDS (Shared Memory)",
         "ROS 2 FastDDS",
         "Native Iceoryx"
     ])
@@ -446,8 +447,8 @@ def main():
     ax_2.set_ylabel("Latency (ms)")
     ax_2.set_title("Transport Latency Comparison")
 
-    fig_1.savefig("/home/alexandre/Pictures/thesis/boxplot_full.png", dpi=300, bbox_inches="tight")
-    fig_2.savefig("/home/alexandre/Pictures/thesis/boxplot_transport.png", dpi=300, bbox_inches="tight")
+    fig_1.savefig("/home/robotics4farmers/Pictures/thesis/boxplot_full.png", dpi=300, bbox_inches="tight")
+    fig_2.savefig("/home/robotics4farmers/Pictures/thesis/boxplot_transport.png", dpi=300, bbox_inches="tight")
 
 if __name__ == "__main__":
     main()
