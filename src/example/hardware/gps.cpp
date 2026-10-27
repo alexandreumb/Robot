@@ -21,7 +21,7 @@
 namespace example
 {
 
-#define GPS_ACTIVE 0
+#define GPS_ACTIVE 1
 #define WAYPOINT_MIN_DIST_SQ 0.25
 
 //////////////////////////////////////////////////////////////
@@ -64,7 +64,6 @@ void GpsHardware::openSocket()
             RCLCPP_INFO(get_logger(), "Logging waypoints to: %s", filepath.c_str());
         }
     }
-    
 
     if (getaddrinfo(ip_.c_str(), std::to_string(port_).c_str(), &hints, &addr) != 0) 
     {

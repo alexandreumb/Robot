@@ -45,6 +45,8 @@ add_executable(camera1_pub src/camera1_pub.cpp)
 ament_target_dependencies(camera1_pub OpenCV rclcpp msgs realsense2)
 target_link_libraries(camera1_pub iceoryx_hoofs::iceoryx_hoofs iceoryx_posh::iceoryx_posh ${realsense2_LIBRARY})
 
+
+
 add_executable(camera_bridge src/camera_bridge.cpp)
 ament_target_dependencies(camera_bridge rclcpp msgs sensor_msgs OpenCV)
 target_link_libraries(camera_bridge iceoryx_posh::iceoryx_posh iceoryx_hoofs::iceoryx_hoofs)
@@ -66,6 +68,7 @@ target_include_directories(camera_sub_iceoryx_nativo PRIVATE
     /home/robotics4farmers/Dev/Robot/src/example
     /usr/local/cuda-12.6/targets/aarch64-linux/include
 )
+
 # add to CMakeLists.txt temporarily
 # target_compile_options(camera1_sub_iceoryx_nativo PRIVATE -fsanitize=address)
 # target_link_options(camera1_sub_iceoryx_nativo PRIVATE -fsanitize=address)

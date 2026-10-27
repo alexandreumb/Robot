@@ -40,8 +40,7 @@ namespace utility
   }
   // called from RT control loop
   void reset_controller_reference_image_msg(
-    const std::shared_ptr<ImgAnalyzeMsg> & msg,
-    const std::shared_ptr<rclcpp_lifecycle::LifecycleNode> & node)
+    const std::shared_ptr<ImgAnalyzeMsg> & msg)
   {
     for (size_t i = 0; i < msg->object.size(); ++i)
     {
@@ -58,17 +57,14 @@ namespace utility
       msg->object[i].point3d.y = std::numeric_limits<double>::quiet_NaN();
       msg->object[i].point3d.z = std::numeric_limits<double>::quiet_NaN();
     }
-    msg->header.stamp = node->now();
     msg->has_object = 0;
   }
 
   void reset_controller_reference_teleopcommand_msg(
-    const std::shared_ptr<TeleopCommand> & msg,
-    const std::shared_ptr<rclcpp_lifecycle::LifecycleNode> & node)
+    const std::shared_ptr<TeleopCommand> & msg)
   {
     msg->velocity = std::numeric_limits<double>::quiet_NaN();
     msg->angle = std::numeric_limits<double>::quiet_NaN();
-    msg->header.stamp = node->now();
   }
 } 
 
@@ -165,12 +161,12 @@ RobotSteeringController::RobotSteeringController()
 
     std::shared_ptr<ImgAnalyzeMsg> msg_img =
       std::make_shared<ImgAnalyzeMsg>();
-    utility::reset_controller_reference_image_msg(msg_img, get_node());
+    utility::reset_controller_reference_image_msg(msg_img);
     input_ref_img_.writeFromNonRT(msg_img);
 
     std::shared_ptr<TeleopCommand> msg_teleop =
       std::make_shared<TeleopCommand>();
-    utility::reset_controller_reference_teleopcommand_msg(msg_teleop, get_node());
+    utility::reset_controller_reference_teleopcommand_msg(msg_teleop);
     input_ref_teleop_.writeFromNonRT(msg_teleop);
 
     try
@@ -427,8 +423,8 @@ RobotSteeringController::RobotSteeringController()
     const rclcpp_lifecycle::State & /*previous_state*/)
   {
     //gpio.configure_pactl();
-    utility::reset_controller_reference_image_msg(*(input_ref_img_.readFromRT()), get_node());
-    utility::reset_controller_reference_teleopcommand_msg(*((input_ref_teleop_.readFromRT())), get_node());
+    utility::reset_controller_reference_image_msg(*(input_ref_img_.readFromRT()));
+    utility::reset_controller_reference_teleopcommand_msg(*(input_ref_teleop_.readFromRT()));
     reference_velocity_ = 0.0;
     reference_angle_ = 0.0;
 
@@ -439,8 +435,8 @@ RobotSteeringController::RobotSteeringController()
     const rclcpp_lifecycle::State & /*previous_state*/)
   {
     halt();
-    utility::reset_controller_reference_image_msg(*(input_ref_img_.readFromRT()), get_node());
-    utility::reset_controller_reference_teleopcommand_msg(*((input_ref_teleop_.readFromRT())), get_node());
+    utility::reset_controller_reference_image_msg(*(input_ref_img_.readFromRT()));
+    utility::reset_controller_reference_teleopcommand_msg(*(input_ref_teleop_.readFromRT()));
     last_velocity_ = std::numeric_limits<double>::quiet_NaN();
     last_angle_ = std::numeric_limits<double>::quiet_NaN();
     reference_velocity_ = std::numeric_limits<double>::quiet_NaN();
@@ -457,32 +453,15 @@ RobotSteeringController::RobotSteeringController()
   controller_interface::return_type RobotSteeringController::update(
     const rclcpp::Time & time, const rclcpp::Duration & period)
   {
-    i += 1;
-    //gpio.set(true);
+
     auto current_data = *(input_ref_teleop_.readFromRT());
-    //3-6 microseconds with camera
     auto current_objects = *(input_ref_img_.readFromRT());
 
     rclcpp::Time image_time((*(input_ref_teleop_.readFromRT()))->header.stamp, RCL_STEADY_TIME);
-    //const auto t = time - (*(input_ref_img_.readFromRT()))->middle_header.stamp;
-    //RCLCPP_INFO(get_node()->get_logger(), "Update middle: %f seconds", t.seconds());
     const auto age_of_last_command = time - image_time; 
-    /*
-    if (i % 1000 == 0) {
-      RCLCPP_INFO(get_node()->get_logger(), "Update 1: %ld seconds", age_of_last_command.nanoseconds());
-    }
-    else if (age_of_last_command.nanoseconds() > 1000000)
-    {
-      RCLCPP_INFO(get_node()->get_logger(), "Error: %ld seconds", age_of_last_command.nanoseconds());
-    }
-    */
-    
-
     if (current_objects->has_object == 1)
     {
-      //3-9 miocroseconds
-      const auto timeout = false;
-
+      const auto timeout = age_of_last_command > ref_timeout_ && ref_timeout_ != rclcpp::Duration::from_seconds(0);;
       if (!timeout)
       {
         object_tracking_ +=1;
@@ -506,7 +485,7 @@ RobotSteeringController::RobotSteeringController()
           }
           else
           {
-            if (current_objects->object[i].label)
+            if (current_objects->object[i].label == 0)
             {
               //RCLCPP_INFO(get_node()->get_logger(), "Person is the detected object.");
             }
@@ -525,11 +504,10 @@ RobotSteeringController::RobotSteeringController()
 
     update_odometry(period);
 
-    if (!std::isnan(reference_velocity_) && !std::isnan(reference_angle_))
+    if (true)
     {
       const auto age_of_last_command = time - image_time;
-      //RCLCPP_INFO(get_node()->get_logger(), "Update 2: %f seconds", age_of_last_command.seconds());  
-      const auto timeout = false;
+      const auto timeout = age_of_last_command > ref_timeout_ && ref_timeout_ != rclcpp::Duration::from_seconds(0);;
 
       // store (for open loop odometry) and set commands
       last_velocity_ = timeout ? 0.0 : reference_velocity_;
@@ -568,9 +546,8 @@ RobotSteeringController::RobotSteeringController()
       }
     }
 
-    //gpio.set(false);
-    //utility::reset_controller_reference_teleopcommand_msg(*((input_ref_teleop_.readFromRT())), get_node());
-    //utility::reset_controller_reference_image_msg(*(input_ref_img_.readFromRT()), get_node());
+    utility::reset_controller_reference_teleopcommand_msg(*(input_ref_teleop_.readFromRT()));
+    utility::reset_controller_reference_image_msg(*(input_ref_img_.readFromRT()));
 
     // Publish odometry message
     // Compute and store orientation info
@@ -658,8 +635,8 @@ RobotSteeringController::RobotSteeringController()
         "Timestamp in header is missing, using current time as command timestamp.");
         msg->header.stamp = get_node()->now();
     }
-    const auto age_of_last_command = get_node()->now() - msg->middle_header.stamp;
-    
+    const auto age_of_last_command = get_node()->now() - msg->header.stamp;   
+
     if (ref_timeout_ == rclcpp::Duration::from_seconds(0) || age_of_last_command <= ref_timeout_)
     {
       input_ref_img_.writeFromNonRT(msg);

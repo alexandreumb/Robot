@@ -122,6 +122,7 @@ namespace gps_sensor_broadcaster
       }
     }
 
+
     if (realtime_gps_sensor_publisher_ && realtime_gps_sensor_publisher_->trylock())
     {
       auto &msg = realtime_gps_sensor_publisher_->msg_;

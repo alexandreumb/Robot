@@ -24,7 +24,7 @@
 #include <condition_variable>
 
 #include "controller_manager/controller_manager.hpp" 
-#include "controller_manager/mmio_gpio.hpp"
+//#include "controller_manager/mmio_gpio.hpp"
 #include "rclcpp/rclcpp.hpp" 
 #include "realtime_tools/realtime_helpers.hpp" 
 //#include "controller_manager/memory.hpp"
@@ -150,8 +150,9 @@ std::thread cm_thread([cm, thread_priority, use_sim_time, cpu_affinity, &sample,
     //std::vector<CounterSample> samples;
 
     //PerformanceCounters counters;
-    MmioGpio gpio;
-    gpio.configure_pactl();
+    //#include "controller_manager/mmio_gpio.hpp"
+    //MmioGpio gpio;
+    //gpio.configure_pactl();
     
     // Set CPU affinity FIRST (before RT scheduling)
     if (cpu_affinity >= 0) {
@@ -261,11 +262,11 @@ std::thread cm_thread([cm, thread_priority, use_sim_time, cpu_affinity, &sample,
         rclcpp::Time ros_time(current_ns, RCL_STEADY_TIME);
         
         //counters.start();
-        gpio.set(true);
+        //gpio.set(true);
         cm->read(ros_time, dt);
         cm->update(ros_time, dt);
         cm->write(ros_time, dt);
-        gpio.set(false);
+        //gpio.set(false);
         //counters.stop();
 
         auto after = std::chrono::steady_clock::now();
@@ -289,7 +290,7 @@ std::thread cm_thread([cm, thread_priority, use_sim_time, cpu_affinity, &sample,
         sample_cv.notify_one();
 
     }
-    gpio.set(false); 
+    //gpio.set(false); 
     close(tfd);
      
     RCLCPP_WARN(cm->get_logger(), "Control loop completed %u iterations", iteration);
